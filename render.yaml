@@ -1,26 +1,32 @@
 # Render.com uchun avtomatik sozlama (Blueprint)
-# Bu fayl bilan Render'da "New +" -> "Blueprint" tanlab, GitHub repo'ni ulang.
+# Render'da: New +  ->  Blueprint  ->  GitHub repongizni tanlang.
 services:
   - type: web
     name: maktabtest
     runtime: python
-    plan: free                # bepul reja
+    plan: free                # BEPUL reja
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
     envVars:
       - key: SECRET_KEY
         generateValue: true    # Render avtomatik maxfiy kalit yaratadi
       - key: PYTHON_VERSION
-        value: 3.12.10
-      # --- MA'LUMOTLARNI DOIMIY SAQLASH UCHUN (disk qo'shsangiz) ---
-      # Quyidagi DATABASE_PATH'ni disk mountPath bilan bir xil qiling.
-      - key: DATABASE_PATH
-        value: /var/data/maktab.db
-    # Doimiy disk (ma'lumotlar o'chib ketmasligi uchun).
-    # DIQQAT: Render'da disk faqat pullik ("Starter") rejada ishlaydi.
-    # Bepul rejada ishlatmoqchi bo'lsangiz, quyidagi "disk" blokini o'chiring
-    # (lekin bepulda har deploy'da ma'lumotlar yangilanadi).
-    disk:
-      name: maktab-data
-      mountPath: /var/data
-      sizeGB: 1
+        value: "3.12.10"
+
+# ============================================================
+# MA'LUMOTLAR DOIMIY SAQLANISHI UCHUN (ixtiyoriy, pullik ~$7/oy):
+# Yuqoridagi "plan: free" ni "plan: starter" ga o'zgartiring va
+# quyidagilarni qo'shing (services dagi web xizmatiga):
+#
+#     envVars:
+#       - key: DATABASE_PATH
+#         value: /var/data/maktab.db
+#       - key: UPLOAD_DIR
+#         value: /var/data/uploads
+#     disk:
+#       name: maktab-data
+#       mountPath: /var/data
+#       sizeGB: 1
+#
+# Shunda o'quvchilar, testlar, natijalar VA videolar abadiy saqlanadi.
+# ============================================================
