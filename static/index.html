@@ -149,14 +149,19 @@
     </header>
     <div class="learn-body">
       <div class="learn-tabs">
-        <button class="learn-tab active" data-ltab="video">🎬 Videolar</button>
-        <button class="learn-tab" data-ltab="audio">🎧 Audio</button>
-        <button class="learn-tab" data-ltab="text">📖 Matnlar</button>
+        <button class="learn-tab active" data-ltab="subjects">📚 Fanlar</button>
         <button class="learn-tab" data-ltab="games">🎮 O'yinlar</button>
       </div>
-      <div id="learn-video" class="learn-pane active"><div id="grid-video" class="cards-grid"></div></div>
-      <div id="learn-audio" class="learn-pane"><div id="grid-audio" class="cards-grid"></div></div>
-      <div id="learn-text" class="learn-pane"><div id="grid-text" class="cards-grid"></div></div>
+      <div id="learn-subjects" class="learn-pane active">
+        <div id="subjects-grid" class="cards-grid"></div>
+        <div id="subject-detail" style="display:none">
+          <button class="btn btn-ghost" id="subj-back" style="margin-bottom:14px">← Fanlarga qaytish</button>
+          <h2 id="subj-title" class="results-title"></h2>
+          <div id="subj-video-sec"><h3 style="margin:16px 0 8px">🎬 Videolar</h3><div id="subj-video" class="cards-grid"></div></div>
+          <div id="subj-audio-sec"><h3 style="margin:18px 0 8px">🎧 Audio darslar</h3><div id="subj-audio" class="cards-grid"></div></div>
+          <div id="subj-text-sec"><h3 style="margin:18px 0 8px">📖 Matnlar</h3><div id="subj-text" class="cards-grid"></div></div>
+        </div>
+      </div>
       <div id="learn-games" class="learn-pane"><div id="games-grid" class="games-grid"></div></div>
     </div>
   </div>

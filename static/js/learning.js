@@ -11,8 +11,10 @@ const Learning = {
         t.classList.add("active");
         document.querySelectorAll(".learn-pane").forEach((p) => p.classList.remove("active"));
         document.getElementById("learn-" + t.dataset.ltab).classList.add("active");
+        if (t.dataset.ltab === "subjects") this.renderSubjects();
       };
     });
+    document.getElementById("subj-back").onclick = () => this.renderSubjects();
     document.getElementById("lr-exit").onclick = () => { this.student = null; UI.showView("view-login"); };
   },
 
@@ -23,42 +25,87 @@ const Learning = {
     document.getElementById("lr-student").textContent =
       `${payload.student.first_name} ${payload.student.last_name} • ${payload.student.class_name}`;
     document.getElementById("lr-coins").textContent = payload.student.coins || 0;
-    this.renderLessons();
+    this.currentSubject = null;
+    this.renderSubjects();
     Games.renderGrid(document.getElementById("games-grid"));
     UI.showView("view-learning");
   },
 
-  renderLessons() {
-    const grids = {
-      video: document.getElementById("grid-video"),
-      audio: document.getElementById("grid-audio"),
-      text: document.getElementById("grid-text"),
-    };
-    Object.values(grids).forEach((g) => (g.innerHTML = ""));
+  /* Avval FANLAR ro'yxati */
+  renderSubjects() {
+    this.currentSubject = null;
+    const grid = document.getElementById("subjects-grid");
+    document.getElementById("subject-detail").style.display = "none";
+    grid.style.display = "";
+    const bySubj = {};
+    this.lessons.forEach((l) => { (bySubj[l.subject] = bySubj[l.subject] || []).push(l); });
+    const subjects = Object.keys(bySubj).sort();
+    if (!subjects.length) {
+      grid.innerHTML = '<p class="muted">Hozircha bu sinf uchun dars qo\'shilmagan.</p>';
+      return;
+    }
+    grid.innerHTML = "";
+    subjects.forEach((subj) => {
+      const items = bySubj[subj];
+      const v = items.filter((l) => l.type === "video").length;
+      const a = items.filter((l) => l.type === "audio").length;
+      const t = items.filter((l) => l.type === "text").length;
+      const done = items.filter((l) => this.completed.has(l.id)).length;
+      const card = document.createElement("div");
+      card.className = "lesson-card";
+      card.innerHTML = `
+        <span class="l-icon">📚</span>
+        <h3>${UI.esc(subj)}</h3>
+        <div class="chips">
+          ${v ? `<span class="chip">🎬 ${v}</span>` : ""}
+          ${a ? `<span class="chip">🎧 ${a}</span>` : ""}
+          ${t ? `<span class="chip">📖 ${t}</span>` : ""}
+        </div>
+        <div class="muted" style="margin-top:6px">${items.length} ta dars${done ? ` • ${done} tugatilgan ✔` : ""}</div>`;
+      card.onclick = () => this.openSubject(subj);
+      grid.appendChild(card);
+    });
+  },
+
+  /* Fan ichidagi darslar (video / audio / matn) */
+  openSubject(subj) {
+    this.currentSubject = subj;
+    document.getElementById("subjects-grid").style.display = "none";
+    document.getElementById("subject-detail").style.display = "";
+    document.getElementById("subj-title").textContent = "📚 " + subj;
+    const lessons = this.lessons.filter((l) => l.subject === subj);
+    [["video", "subj-video"], ["audio", "subj-audio"], ["text", "subj-text"]].forEach(([type, id]) => {
+      const items = lessons.filter((l) => l.type === type);
+      document.getElementById(id + "-sec").style.display = items.length ? "" : "none";
+      if (items.length) this._renderTypeGroup(id, items, type);
+    });
+    window.scrollTo(0, 0);
+  },
+
+  _renderTypeGroup(containerId, lessons, type) {
+    const box = document.getElementById(containerId);
     const icons = { video: "🎬", audio: "🎧", text: "📖" };
-    const counts = { video: 0, audio: 0, text: 0 };
-    this.lessons.forEach((l) => {
-      const grid = grids[l.type];
-      if (!grid) return;
-      counts[l.type]++;
+    box.innerHTML = "";
+    lessons.forEach((l) => {
       const card = document.createElement("div");
       card.className = "lesson-card" + (this.completed.has(l.id) ? " done" : "");
       card.innerHTML = `
         <span class="l-icon">${icons[l.type] || "📘"}</span>
         <h3>${UI.esc(l.title)}</h3>
         <div class="chips">
-          <span class="chip">${UI.esc(l.subject)}</span>
           <span class="chip">🪙 ${l.coins_reward}</span>
           ${l.file_size_mb ? `<span class="chip">💾 ${l.file_size_mb} MB</span>` : ""}
           ${l.related_test ? '<span class="chip">📝 test bor</span>' : ""}
         </div>`;
       card.onclick = () => this.openLesson(l);
-      grid.appendChild(card);
+      box.appendChild(card);
     });
-    const names = { video: "video", audio: "audio", text: "matn" };
-    Object.keys(grids).forEach((type) => {
-      if (counts[type] === 0) grids[type].innerHTML = `<p class="muted">Bu bo'limda hozircha ${names[type]} dars yo'q.</p>`;
-    });
+  },
+
+  /* Modal yopilганда joriy ko'rinishни yangilaydi (tugatilgan belgisi uchun) */
+  refreshLearning() {
+    if (this.currentSubject) this.openSubject(this.currentSubject);
+    else this.renderSubjects();
   },
 
   openLesson(l) {
@@ -92,7 +139,7 @@ const Learning = {
         </div>
         <p class="player-note">⚠️ Darsni oldinga o'tkazib yoki tezlashtirib bo'lmaydi. Faqat 10 soniya orqaga qaytarish mumkin.</p>
         <div id="pl-done-area"></div>
-      </div>`, { large: true, onClose: () => { this.stopMedia(); this.renderLessons(); } });
+      </div>`, { large: true, onClose: () => { this.stopMedia(); this.refreshLearning(); } });
 
     const media = document.getElementById("lesson-media");
     const spin = document.getElementById("media-spinner");
@@ -135,7 +182,7 @@ const Learning = {
       <div style="text-align:center;margin-top:14px">
         <button class="btn btn-success" id="txt-done" disabled>Iltimos o'qing...</button>
       </div>
-      <div id="pl-done-area"></div>`, { large: true, onClose: () => { this.stopMedia(); this.renderLessons(); } });
+      <div id="pl-done-area"></div>`, { large: true, onClose: () => { this.stopMedia(); this.refreshLearning(); } });
 
     const btn = document.getElementById("txt-done");
     let sec = 6;
@@ -174,7 +221,7 @@ const Learning = {
           <button class="btn btn-ghost" id="pl-close">Darslarga qaytish</button>
         </div>
       </div>`;
-    document.getElementById("pl-close").onclick = () => { UI.closeModal(); this.renderLessons(); };
+    document.getElementById("pl-close").onclick = () => { UI.closeModal(); this.refreshLearning(); };
     if (l.related_test) document.getElementById("pl-test").onclick = () => this.startRelatedTest(l);
   },
 
