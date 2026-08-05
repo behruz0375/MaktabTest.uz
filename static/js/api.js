@@ -8,11 +8,21 @@ const API = {
     };
     if (body !== null) opts.body = JSON.stringify(body);
     let res, data;
-    try {
-      res = await fetch(path, opts);
-    } catch (e) {
-      if (window.UI && UI.offlineModal) UI.offlineModal();
-      return { ok: false, error: "Serverga ulanib bo'lmadi. Internetni tekshiring." };
+    // Server bir lahzaga sekinlashса — darrov xato deb baqirmaymiz, jimgina qayta urinamiz
+    const maxTries = 3;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        res = await fetch(path, opts);
+        break; // muvaffaqiyat
+      } catch (e) {
+        if (attempt < maxTries) {
+          await new Promise((r) => setTimeout(r, attempt * 700)); // 0.7s, 1.4s
+          continue;
+        }
+        // Bir necha urinishдан keyin ham bo'lmadi — endi xabar beramiz
+        if (typeof UI !== "undefined" && UI.offlineModal) UI.offlineModal();
+        return { ok: false, error: "Server javob bermadi. Biroz kutib, qayta urinib ko'ring." };
+      }
     }
     try {
       data = await res.json();

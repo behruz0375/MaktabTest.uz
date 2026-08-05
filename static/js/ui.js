@@ -30,14 +30,18 @@ const UI = {
   offlineModal() {
     if (this._offlineShown) return;
     this._offlineShown = true;
+    const inExam = window.State && State.exam && State.exam.active;
     this.modal(`
       <span class="modal-icon">📡</span>
-      <h2 style="text-align:center;color:var(--danger-1)">Internet yo'q</h2>
-      <p style="text-align:center">Internetga ulanishingizni tekshiring va qayta urinib ko'ring.</p>
-      <div style="text-align:center;margin-top:16px">
-        <button class="btn btn-primary" id="off-ok">Yopish</button>
+      <h2 style="text-align:center;color:var(--danger-1)">Server javob bermadi</h2>
+      <p style="text-align:center">Aloqa bir lahzaga uzildi. Internetingiz yaxshi bo'lsa, biroz kutib qayta urinib ko'ring.</p>
+      <div style="text-align:center;margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="off-close">Yopish</button>
+        ${inExam ? "" : '<button class="btn btn-primary" id="off-retry">🔄 Qayta yuklash</button>'}
       </div>`, { onClose: () => { this._offlineShown = false; } });
-    document.getElementById("off-ok").onclick = () => this.closeModal();
+    document.getElementById("off-close").onclick = () => this.closeModal();
+    const retry = document.getElementById("off-retry");
+    if (retry) retry.onclick = () => location.reload();
   },
 
   /* --- Toast xabar --- */

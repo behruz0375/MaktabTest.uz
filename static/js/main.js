@@ -7,10 +7,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   Parent.bind();
   Teacher.bind();
 
-  // Internet holati
-  window.addEventListener("offline", () => UI.offlineModal());
-  window.addEventListener("online", () => { UI.closeModal(); UI.toast("Internet qayta ulandi ✔", "ok"); });
-
   await UI.loadMeta();
 
   let studentMode = "test"; // test | learn
