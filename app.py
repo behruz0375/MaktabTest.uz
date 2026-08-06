@@ -585,19 +585,42 @@ def results():
 @app.route("/api/live", methods=["GET"])
 @teacher_required
 def live_monitor():
-    """Hozir test yechayotgan o'quvchilar (jonli)."""
+    """Hozir test yechayotgan o'quvchilar (jonli, to'liq ma'lumot bilan)."""
+    class_filter = norm(request.args.get("class_name"))
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT sub.started_at, s.first_name, s.last_name, s.class_name, t.title, t.subject "
+            "SELECT sub.started_at, sub.answers_json, s.first_name, s.last_name, s.class_name, "
+            "t.title, t.subject, t.code, t.duration_minutes, "
+            "(SELECT COUNT(*) FROM questions q WHERE q.test_id = t.id) AS q_total "
             "FROM submissions sub "
             "JOIN students s ON s.id = sub.student_id "
             "JOIN tests t ON t.id = sub.test_id "
             "WHERE sub.status = 'in_progress' ORDER BY sub.started_at DESC"
         ).fetchall()
-        out = [{"first_name": r["first_name"], "last_name": r["last_name"], "class_name": r["class_name"],
-                "test_title": r["title"], "subject": r["subject"], "started_at": r["started_at"]} for r in rows]
-        return jsonify({"ok": True, "active": out, "count": len(out)})
+        now = datetime.now()
+        out = []
+        all_classes = sorted(set(r["class_name"] for r in rows))
+        for r in rows:
+            if class_filter and r["class_name"] != class_filter:
+                continue
+            try:
+                started = datetime.strptime(r["started_at"], "%Y-%m-%d %H:%M:%S")
+                elapsed = int((now - started).total_seconds())
+            except Exception:
+                elapsed = 0
+            remaining = max(0, r["duration_minutes"] * 60 - elapsed)
+            try:
+                answered = len(json.loads(r["answers_json"] or "{}"))
+            except Exception:
+                answered = 0
+            out.append({
+                "first_name": r["first_name"], "last_name": r["last_name"], "class_name": r["class_name"],
+                "test_title": r["title"], "subject": r["subject"], "code": r["code"],
+                "started_at": r["started_at"], "remaining_seconds": remaining,
+                "duration_minutes": r["duration_minutes"], "answered": answered, "q_total": r["q_total"],
+            })
+        return jsonify({"ok": True, "active": out, "count": len(out), "classes": all_classes})
     finally:
         conn.close()
 

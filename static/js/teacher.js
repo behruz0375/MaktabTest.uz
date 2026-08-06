@@ -136,22 +136,51 @@ const Teacher = {
 
   /* ===== JONLI KUZATUV ===== */
   startLive() {
+    const sel = document.getElementById("live-class");
+    if (sel && sel.dataset.done !== "1") {
+      State.meta.classes.forEach((c) => {
+        const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o);
+      });
+      sel.dataset.done = "1";
+      sel.onchange = () => this.loadLive();
+    }
     this.loadLive();
     this.stopLive();
-    this._liveTimer = setInterval(() => this.loadLive(), 5000);
+    this._liveTimer = setInterval(() => this.loadLive(), 4000);
+    this._liveTick = setInterval(() => this.tickLive(), 1000);
   },
   stopLive() {
     if (this._liveTimer) { clearInterval(this._liveTimer); this._liveTimer = null; }
+    if (this._liveTick) { clearInterval(this._liveTick); this._liveTick = null; }
+  },
+  fmtClock(sec) {
+    sec = Math.max(0, sec || 0);
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  },
+  tickLive() {
+    if (!this._live) return;
+    this._live.forEach((a, i) => {
+      if (a.remaining_seconds > 0) a.remaining_seconds--;
+      const el = document.getElementById("live-time-" + i);
+      if (el) { el.textContent = this.fmtClock(a.remaining_seconds); el.classList.toggle("warn", a.remaining_seconds <= 30); }
+    });
   },
   async loadLive() {
-    const res = await API.get("/api/live");
+    const selEl = document.getElementById("live-class");
+    const cls = selEl ? selEl.value : "";
+    const res = await API.get("/api/live" + (cls ? "?class_name=" + encodeURIComponent(cls) : ""));
     if (!res.ok) return;
+    this._live = res.active;
     document.getElementById("live-count").textContent = res.count;
-    document.getElementById("live-updated").textContent = "Yangilandi: " + new Date().toLocaleTimeString();
+    document.getElementById("live-updated").textContent = "🔄 " + new Date().toLocaleTimeString();
     const box = document.getElementById("live-list");
-    if (!res.active.length) { box.innerHTML = '<p class="muted">Hozir hech kim test yechmayapti.</p>'; return; }
+    if (!res.active.length) {
+      box.innerHTML = '<p class="muted">Hozir hech kim test yechmayapti' + (cls ? " (" + UI.esc(cls) + ")" : "") + '. O\'quvchi test boshlaganда shu yerda paydo bo\'ladi.</p>';
+      return;
+    }
     box.innerHTML = "";
-    res.active.forEach((a) => {
+    res.active.forEach((a, i) => {
       const initials = ((a.first_name[0] || "") + (a.last_name[0] || "")).toUpperCase();
       const row = document.createElement("div");
       row.className = "student-row";
@@ -159,10 +188,13 @@ const Teacher = {
       row.innerHTML = `
         <div class="student-avatar" style="background:linear-gradient(135deg,#23c483,#12b8ff)">${UI.esc(initials)}</div>
         <div class="student-info">
-          <div class="name">${UI.esc(a.last_name)} ${UI.esc(a.first_name)} <span class="muted">(${UI.esc(a.class_name)})</span></div>
-          <div class="sub">📝 ${UI.esc(a.test_title)} • ${UI.esc(a.subject)}</div>
+          <div class="name">${UI.esc(a.last_name)} ${UI.esc(a.first_name)} <span class="role-tag role-teacher">${UI.esc(a.class_name)}</span></div>
+          <div class="sub">📝 ${UI.esc(a.test_title)} • ${UI.esc(a.subject)} • 🔑 <b>${UI.esc(a.code)}</b> • ✍️ ${a.answered}/${a.q_total}</div>
         </div>
-        <span class="status-pill done">🟢 Yechyapti</span>`;
+        <div class="live-timer">
+          <span class="timer-label">Qolgan vaqt</span>
+          <span class="live-time" id="live-time-${i}">${this.fmtClock(a.remaining_seconds)}</span>
+        </div>`;
       box.appendChild(row);
     });
   },

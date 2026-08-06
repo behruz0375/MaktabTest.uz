@@ -1113,6 +1113,9 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 .cred-pill b { color: var(--primary-2); }
 
 /* Jonli kuzatuv */
+.live-timer { text-align: right; flex-shrink: 0; }
+.live-time { font-size: 1.4rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--accent); display: block; }
+.live-time.warn { color: var(--danger-1); animation: pulseTimer .6s ease-in-out infinite; }
 .live-head { display: flex; align-items: center; gap: 10px; font-size: 1.05rem; }
 .live-dot { width: 14px; height: 14px; border-radius: 50%; background: #23c483; box-shadow: 0 0 0 0 rgba(35,196,131,.7); animation: livePulse 1.6s infinite; }
 @keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(35,196,131,.6); } 70% { box-shadow: 0 0 0 12px rgba(35,196,131,0); } 100% { box-shadow: 0 0 0 0 rgba(35,196,131,0); } }
