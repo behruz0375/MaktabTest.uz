@@ -1111,3 +1111,28 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 .parent-cred .pc-creds { display: flex; gap: 10px; flex-wrap: wrap; }
 .cred-pill { background: var(--inp-bg); border: 1px solid var(--inp-border); border-radius: 10px; padding: 6px 12px; font-family: monospace; font-weight: 700; }
 .cred-pill b { color: var(--primary-2); }
+
+/* Jonli kuzatuv */
+.live-head { display: flex; align-items: center; gap: 10px; font-size: 1.05rem; }
+.live-dot { width: 14px; height: 14px; border-radius: 50%; background: #23c483; box-shadow: 0 0 0 0 rgba(35,196,131,.7); animation: livePulse 1.6s infinite; }
+@keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(35,196,131,.6); } 70% { box-shadow: 0 0 0 12px rgba(35,196,131,0); } 100% { box-shadow: 0 0 0 0 rgba(35,196,131,0); } }
+
+/* Baho guruhlari (3/4/5) */
+.baho-group { margin-bottom: 22px; }
+.baho-group-title { display: flex; align-items: center; gap: 10px; font-size: 1.15rem; font-weight: 800; margin-bottom: 12px; }
+.baho-badge { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; color: #fff; font-weight: 900; font-size: 1.2rem; }
+.baho-5 { background: linear-gradient(135deg, #23c483, #12b8ff); }
+.baho-4 { background: linear-gradient(135deg, #2b7fff, #7c5cff); }
+.baho-3 { background: linear-gradient(135deg, #ff9f1a, #ffcc33); color: #4a2c00; }
+.baho-2 { background: linear-gradient(135deg, #ff5470, #ff8f3f); }
+.baho-none { background: var(--inp-bg); border: 1.5px dashed var(--card-border); color: var(--muted); }
+
+/* Bloklangan o'quvchi */
+.student-row.blocked { opacity: .6; border-color: var(--danger-1); }
+.pill-blocked { background: linear-gradient(135deg, var(--danger-1), var(--danger-2)); color: #fff; padding: 4px 12px; border-radius: 999px; font-size: .78rem; font-weight: 800; }
+
+/* Rol yorlig'i */
+.role-tag { padding: 3px 10px; border-radius: 999px; font-size: .74rem; font-weight: 800; }
+.role-director { background: linear-gradient(135deg, #ffd93b, #ff9f1a); color: #4a2c00; }
+.role-zavuch { background: linear-gradient(135deg, #7c5cff, #ff5cae); color: #fff; }
+.role-teacher { background: var(--inp-bg); border: 1px solid var(--inp-border); color: var(--muted); }

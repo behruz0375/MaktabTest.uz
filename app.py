@@ -92,6 +92,35 @@ def admin_required(f):
     return wrapper
 
 
+ROLE_LABELS = {"director": "Direktor", "zavuch": "Zavuch", "teacher": "O'qituvchi"}
+
+
+def role_required(*roles):
+    def deco(f):
+        @functools.wraps(f)
+        def wrapper(*a, **k):
+            if not session.get("teacher_id"):
+                return jsonify({"ok": False, "error": "Avval tizimga kiring"}), 401
+            if session.get("role") not in roles:
+                return jsonify({"ok": False, "error": "Sizda bu amal uchun ruxsat yo'q"}), 403
+            return f(*a, **k)
+        return wrapper
+    return deco
+
+
+def baho_from_pct(pct):
+    """Foizni 5 ballik bahoga aylantiradi (5/4/3/2)."""
+    if pct is None:
+        return None
+    if pct >= 87:
+        return 5
+    if pct >= 71:
+        return 4
+    if pct >= 55:
+        return 3
+    return 2
+
+
 def norm(s):
     return (s or "").strip()
 
@@ -156,10 +185,14 @@ def teacher_login():
         r = conn.execute("SELECT * FROM teachers WHERE username = ?", (username,)).fetchone()
         if not r or not check_password_hash(r["password_hash"], password):
             return jsonify({"ok": False, "error": "Login yoki parol noto'g'ri"}), 401
+        role = r["role"] or ("director" if r["is_admin"] else "teacher")
         session["teacher_id"] = r["id"]
         session["teacher_name"] = r["username"]
         session["is_admin"] = bool(r["is_admin"])
-        return jsonify({"ok": True, "teacher": {"id": r["id"], "username": r["username"], "is_admin": bool(r["is_admin"])}})
+        session["role"] = role
+        return jsonify({"ok": True, "teacher": {"id": r["id"], "username": r["username"],
+                                                "is_admin": bool(r["is_admin"]), "role": role,
+                                                "role_label": ROLE_LABELS.get(role, "O'qituvchi")}})
     finally:
         conn.close()
 
@@ -174,7 +207,10 @@ def teacher_logout():
 def teacher_me():
     if not session.get("teacher_id"):
         return jsonify({"ok": False}), 401
-    return jsonify({"ok": True, "teacher": {"id": session["teacher_id"], "username": session.get("teacher_name"), "is_admin": bool(session.get("is_admin"))}})
+    role = session.get("role") or "teacher"
+    return jsonify({"ok": True, "teacher": {"id": session["teacher_id"], "username": session.get("teacher_name"),
+                                            "is_admin": bool(session.get("is_admin")), "role": role,
+                                            "role_label": ROLE_LABELS.get(role, "O'qituvchi")}})
 
 
 @app.route("/api/teacher/credentials", methods=["POST"])
@@ -412,6 +448,7 @@ def list_students():
         students = [{
             "id": r["id"], "first_name": r["first_name"], "last_name": r["last_name"],
             "class_name": r["class_name"], "created_at": r["created_at"],
+            "blocked": bool(r["blocked"]),
         } for r in rows]
         return jsonify({"ok": True, "students": students})
     finally:
@@ -524,6 +561,8 @@ def results():
             grants = conn.execute(
                 "SELECT test_id FROM retake_grants WHERE student_id = ?", (s["id"],)
             ).fetchall()
+            completed = [x for x in subs if x["status"] == "completed"]
+            best_pct = max([x["percentage"] for x in completed], default=None) if completed else None
             out.append({
                 "id": s["id"],
                 "first_name": s["first_name"],
@@ -534,8 +573,31 @@ def results():
                 "has_violation": any(x["status"] == "terminated" for x in subs),
                 "retake_test_ids": [g["test_id"] for g in grants],
                 "monthly_pct": monthly_pct(conn, s["id"]),
+                "best_pct": round(best_pct, 1) if best_pct is not None else None,
+                "baho": baho_from_pct(best_pct),
+                "blocked": bool(s["blocked"]),
             })
         return jsonify({"ok": True, "class_name": class_name, "students": out})
+    finally:
+        conn.close()
+
+
+@app.route("/api/live", methods=["GET"])
+@teacher_required
+def live_monitor():
+    """Hozir test yechayotgan o'quvchilar (jonli)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT sub.started_at, s.first_name, s.last_name, s.class_name, t.title, t.subject "
+            "FROM submissions sub "
+            "JOIN students s ON s.id = sub.student_id "
+            "JOIN tests t ON t.id = sub.test_id "
+            "WHERE sub.status = 'in_progress' ORDER BY sub.started_at DESC"
+        ).fetchall()
+        out = [{"first_name": r["first_name"], "last_name": r["last_name"], "class_name": r["class_name"],
+                "test_title": r["title"], "subject": r["subject"], "started_at": r["started_at"]} for r in rows]
+        return jsonify({"ok": True, "active": out, "count": len(out)})
     finally:
         conn.close()
 
@@ -634,6 +696,8 @@ def student_start():
             )
             student_id = cur.lastrowid
         else:
+            if student["blocked"]:
+                return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
             student_id = student["id"]
 
         # Avval topshirganmi? (retake ruxsati bo'lmasa — bloklaymiz)
@@ -949,6 +1013,8 @@ def learning_enter():
             "SELECT * FROM students WHERE lower(first_name)=lower(?) AND lower(last_name)=lower(?) AND class_name=?",
             (first, last, class_name),
         ).fetchone()
+        if student and student["blocked"]:
+            return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
         if not student:
             cur = conn.execute(
                 "INSERT INTO students (first_name, last_name, class_name, created_at) VALUES (?, ?, ?, ?)",
@@ -1055,7 +1121,7 @@ def learning_results():
 # OTA-ONA paneli
 # --------------------------------------------------------------------------
 @app.route("/api/students/<int:student_id>/parent", methods=["POST"])
-@teacher_required
+@role_required("director", "zavuch")
 def set_parent(student_id):
     data = request.get_json(force=True, silent=True) or {}
     username = norm(data.get("username"))
@@ -1076,6 +1142,23 @@ def set_parent(student_id):
                      (username, generate_password_hash(password), password, student_id))
         conn.commit()
         return jsonify({"ok": True, "username": username, "password": password})
+    finally:
+        conn.close()
+
+
+@app.route("/api/students/<int:student_id>/block", methods=["POST"])
+@role_required("director", "zavuch")
+def block_student(student_id):
+    """O'quvchini bloklaydi/blokdan chiqaradi (faqat direktor/zavuch)."""
+    data = request.get_json(force=True, silent=True) or {}
+    blocked = 1 if data.get("blocked") else 0
+    conn = get_conn()
+    try:
+        if not conn.execute("SELECT 1 FROM students WHERE id = ?", (student_id,)).fetchone():
+            return jsonify({"ok": False, "error": "O'quvchi topilmadi"}), 404
+        conn.execute("UPDATE students SET blocked = ? WHERE id = ?", (blocked, student_id))
+        conn.commit()
+        return jsonify({"ok": True, "blocked": bool(blocked)})
     finally:
         conn.close()
 
@@ -1194,25 +1277,38 @@ def lesson_image(lesson_id):
 # O'QITUVCHILAR (bir nechta hisob)
 # --------------------------------------------------------------------------
 @app.route("/api/teachers", methods=["GET"])
-@admin_required
+@role_required("director", "zavuch")
 def list_teachers():
+    my_role = session.get("role")
     conn = get_conn()
     try:
-        rows = conn.execute("SELECT id, username, created_at FROM teachers ORDER BY id").fetchall()
-        return jsonify({"ok": True, "teachers": [
-            {"id": r["id"], "username": r["username"], "created_at": r["created_at"],
-             "is_me": r["id"] == session.get("teacher_id")} for r in rows
-        ]})
+        rows = conn.execute("SELECT id, username, role, is_admin, created_at FROM teachers ORDER BY role, id").fetchall()
+        out = []
+        for r in rows:
+            role = r["role"] or ("director" if r["is_admin"] else "teacher")
+            # Zavuch faqat o'qituvchilarni ko'radi (o'zidan boshqa direktor/zavuchni emas)
+            if my_role == "zavuch" and role != "teacher" and r["id"] != session.get("teacher_id"):
+                continue
+            out.append({"id": r["id"], "username": r["username"], "role": role,
+                        "role_label": ROLE_LABELS.get(role, "O'qituvchi"),
+                        "is_me": r["id"] == session.get("teacher_id")})
+        return jsonify({"ok": True, "teachers": out, "my_role": my_role})
     finally:
         conn.close()
 
 
 @app.route("/api/teachers", methods=["POST"])
-@admin_required
+@role_required("director", "zavuch")
 def create_teacher():
     data = request.get_json(force=True, silent=True) or {}
     username = norm(data.get("username"))
     password = data.get("password") or ""
+    role = norm(data.get("role")) or "teacher"
+    my_role = session.get("role")
+    if role not in ("zavuch", "teacher"):
+        return jsonify({"ok": False, "error": "Rol noto'g'ri"}), 400
+    if my_role == "zavuch" and role != "teacher":
+        return jsonify({"ok": False, "error": "Zavuch faqat o'qituvchi qo'sha oladi"}), 403
     if not username:
         return jsonify({"ok": False, "error": "Login kiriting"}), 400
     if len(password) < 4:
@@ -1221,8 +1317,9 @@ def create_teacher():
     try:
         if conn.execute("SELECT 1 FROM teachers WHERE username = ?", (username,)).fetchone():
             return jsonify({"ok": False, "error": "Bu login band"}), 400
-        conn.execute("INSERT INTO teachers (username, password_hash, created_at) VALUES (?, ?, ?)",
-                     (username, generate_password_hash(password), now_iso()))
+        conn.execute("INSERT INTO teachers (username, password_hash, role, is_admin, created_at) VALUES (?, ?, ?, ?, ?)",
+                     (username, generate_password_hash(password), role,
+                      1 if role in ("director", "zavuch") else 0, now_iso()))
         conn.commit()
         return jsonify({"ok": True})
     finally:
@@ -1230,15 +1327,21 @@ def create_teacher():
 
 
 @app.route("/api/teachers/<int:teacher_id>", methods=["DELETE"])
-@admin_required
+@role_required("director", "zavuch")
 def delete_teacher(teacher_id):
+    my_role = session.get("role")
     conn = get_conn()
     try:
-        cnt = conn.execute("SELECT COUNT(*) AS c FROM teachers").fetchone()["c"]
-        if cnt <= 1:
-            return jsonify({"ok": False, "error": "Kamida bitta o'qituvchi qolishi kerak"}), 400
+        target = conn.execute("SELECT * FROM teachers WHERE id = ?", (teacher_id,)).fetchone()
+        if not target:
+            return jsonify({"ok": False, "error": "Topilmadi"}), 404
+        trole = target["role"] or ("director" if target["is_admin"] else "teacher")
         if teacher_id == session.get("teacher_id"):
             return jsonify({"ok": False, "error": "O'zingizni o'chira olmaysiz"}), 400
+        if my_role == "zavuch" and trole != "teacher":
+            return jsonify({"ok": False, "error": "Zavuch faqat o'qituvchini o'chira oladi"}), 403
+        if trole == "director" and conn.execute("SELECT COUNT(*) AS c FROM teachers WHERE role='director'").fetchone()["c"] <= 1:
+            return jsonify({"ok": False, "error": "Oxirgi direktorni o'chirib bo'lmaydi"}), 400
         conn.execute("DELETE FROM teachers WHERE id = ?", (teacher_id,))
         conn.commit()
         return jsonify({"ok": True})
@@ -1250,7 +1353,7 @@ def delete_teacher(teacher_id):
 # OTA-ONALAR ro'yxati (login/parollarni ko'rsatish)
 # --------------------------------------------------------------------------
 @app.route("/api/parents", methods=["GET"])
-@teacher_required
+@role_required("director", "zavuch")
 def list_parents():
     class_name = norm(request.args.get("class_name"))
     if class_name not in CLASSES:

@@ -197,6 +197,7 @@
         <button class="side-btn" data-section="tests">📋 <span>Testlarim</span></button>
         <button class="side-btn" data-section="lessons">📚 <span>Darslar (bilim olish)</span></button>
         <button class="side-btn" data-section="results">📊 <span>Natijalar va xavfsizlik</span></button>
+        <button class="side-btn" data-section="live">🟢 <span>Jonli kuzatuv</span></button>
         <button class="side-btn" data-section="learning">🎓 <span>Mutolaa natijalari</span></button>
         <button class="side-btn" data-section="students">👥 <span>O'quvchilar ro'yxati</span></button>
         <button class="side-btn" data-section="parents">👪 <span>Ota-onalar (login)</span></button>
@@ -352,6 +353,22 @@
         <div id="results-list" class="results-list"></div>
       </section>
 
+      <!-- === Jonli kuzatuv === -->
+      <section id="sec-live" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>🟢 Jonli kuzatuv — hozir test yechayotganlar</h2>
+        </div>
+        <div class="card">
+          <div class="live-head">
+            <span class="live-dot"></span>
+            <b id="live-count">0</b> ta o'quvchi hozir test yechyapti
+            <span class="muted" style="margin-left:auto" id="live-updated"></span>
+          </div>
+        </div>
+        <div id="live-list" class="results-list"></div>
+      </section>
+
       <!-- === Mutolaa natijalari (bilim olish) === -->
       <section id="sec-learning" class="panel-section">
         <div class="section-head">
@@ -422,7 +439,13 @@
           <p class="muted">Yangi o'qituvchi qo'shsangiz, u ham shu login/parol bilan panelга kira oladi.</p>
           <div class="field-row"><label>Yangi login</label><input id="tch-user" class="inp" placeholder="Masalan: oqituvchi2"></div>
           <div class="field-row"><label>Parol</label><input id="tch-pass" class="inp" type="text" placeholder="Kamida 4 ta belgi"></div>
-          <button id="tch-add" class="btn btn-success">➕ O'qituvchi qo'shish</button>
+          <div class="field-row"><label>Rol (kim uchun panel?)</label>
+            <select id="tch-role" class="inp">
+              <option value="teacher">O'qituvchi</option>
+              <option value="zavuch">Zavuch</option>
+            </select>
+          </div>
+          <button id="tch-add" class="btn btn-success">➕ Panel qo'shish</button>
         </div>
         <div id="teachers-list" class="results-list"></div>
       </section>

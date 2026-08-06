@@ -50,10 +50,19 @@ const Teacher = {
   enter() {
     this.history = [];
     this.currentSection = null;
-    // "O'qituvchilar" bo'limi faqat asosiy o'qituvchi (admin) uchun
-    const isAdmin = State.teacher && State.teacher.is_admin;
-    const tchBtn = document.querySelector('.side-btn[data-section="teachers"]');
-    if (tchBtn) tchBtn.style.display = isAdmin ? "" : "none";
+    const t = State.teacher || {};
+    const isAdmin = t.is_admin; // direktor yoki zavuch
+    // Faqat direktor/zavuch ko'radigan bo'limlar
+    ["teachers", "parents"].forEach((sec) => {
+      const btn = document.querySelector(`.side-btn[data-section="${sec}"]`);
+      if (btn) btn.style.display = isAdmin ? "" : "none";
+    });
+    // Sidebar sarlavhasiga rol yorlig'i
+    const brand = document.querySelector("#view-teacher .sidebar-brand span");
+    if (brand) brand.textContent = (t.role_label || "O'qituvchi") + " paneli";
+    // "O'qituvchilar" tugmasi matnini rolga moslash
+    const tchBtnSpan = document.querySelector('.side-btn[data-section="teachers"] span');
+    if (tchBtnSpan) tchBtnSpan.textContent = t.role === "director" ? "Panellar boshqaruvi" : "O'qituvchilar";
     this.showSection("stats", false);
     UI.showView("view-teacher");
   },
@@ -76,6 +85,7 @@ const Teacher = {
     if (id === "stats") this.loadStats();
     if (id === "parents") this.renderParClassButtons();
     if (id === "teachers") this.loadTeachers();
+    if (id === "live") this.startLive(); else this.stopLive();
     window.scrollTo(0, 0);
   },
 
@@ -124,6 +134,39 @@ const Teacher = {
     box.dataset.done = "1";
   },
 
+  /* ===== JONLI KUZATUV ===== */
+  startLive() {
+    this.loadLive();
+    this.stopLive();
+    this._liveTimer = setInterval(() => this.loadLive(), 5000);
+  },
+  stopLive() {
+    if (this._liveTimer) { clearInterval(this._liveTimer); this._liveTimer = null; }
+  },
+  async loadLive() {
+    const res = await API.get("/api/live");
+    if (!res.ok) return;
+    document.getElementById("live-count").textContent = res.count;
+    document.getElementById("live-updated").textContent = "Yangilandi: " + new Date().toLocaleTimeString();
+    const box = document.getElementById("live-list");
+    if (!res.active.length) { box.innerHTML = '<p class="muted">Hozir hech kim test yechmayapti.</p>'; return; }
+    box.innerHTML = "";
+    res.active.forEach((a) => {
+      const initials = ((a.first_name[0] || "") + (a.last_name[0] || "")).toUpperCase();
+      const row = document.createElement("div");
+      row.className = "student-row";
+      row.style.cursor = "default";
+      row.innerHTML = `
+        <div class="student-avatar" style="background:linear-gradient(135deg,#23c483,#12b8ff)">${UI.esc(initials)}</div>
+        <div class="student-info">
+          <div class="name">${UI.esc(a.last_name)} ${UI.esc(a.first_name)} <span class="muted">(${UI.esc(a.class_name)})</span></div>
+          <div class="sub">📝 ${UI.esc(a.test_title)} • ${UI.esc(a.subject)}</div>
+        </div>
+        <span class="status-pill done">🟢 Yechyapti</span>`;
+      box.appendChild(row);
+    });
+  },
+
   goBack() {
     if (this.history.length > 0) {
       this.showSection(this.history.pop(), false);
@@ -133,6 +176,7 @@ const Teacher = {
   },
 
   async logout() {
+    this.stopLive();
     await API.post("/api/teacher/logout");
     State.teacher = null;
     UI.showView("view-login");
@@ -376,53 +420,82 @@ const Teacher = {
       box.innerHTML = '<p class="muted">Bu sinfda o\'quvchi yo\'q. "O\'quvchilar ro\'yxati" bo\'limidan qo\'shing yoki o\'quvchilar test topshirsa avtomatik paydo bo\'ladi.</p>';
       return;
     }
-    // Topshirganlar: eng yaxshi ball, so'ng eng tez vaqt bo'yicha saralanadi
-    const submitted = res.students.filter((s) => s.submitted).map((s) => ({ s, st: this.bestStats(s) }));
-    submitted.sort((a, b) => (b.st.pct - a.st.pct) || (a.st.dur - b.st.dur));
-    const pending = res.students.filter((s) => !s.submitted);
-
     box.innerHTML = "";
-    submitted.forEach(({ s, st }, i) => {
-      const rank = i + 1;
-      const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : rank;
-      const badgeCls = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
-      const initials = ((s.first_name[0] || "") + (s.last_name[0] || "")).toUpperCase();
-      const pill = s.has_violation
-        ? '<span class="status-pill danger">⚠️ Xavf</span>'
-        : `<span class="status-pill done">${st.count} ta test</span>`;
-      const row = document.createElement("div");
-      row.className = "student-row" + (rank === 1 ? " top1" : "");
-      row.innerHTML = `
-        <div class="rank-badge ${badgeCls}">${medal}</div>
-        <div class="student-avatar">${UI.esc(initials)}</div>
-        <div class="student-info">
-          <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</div>
-          <div class="rank-meta">
-            ${this.starsFor(st.pct)}
-            <span class="rank-score">Eng yaxshi: ${st.pct}% • ${this.fmtDur(st.dur)}${s.monthly_pct != null ? ` • 📅 bu oy: ${s.monthly_pct}%` : ""}</span>
+    const submitted = res.students.filter((s) => s.submitted);
+    const pending = res.students.filter((s) => !s.submitted);
+    // Umumiy reyting raqami (eng yaxshi ball + tez vaqt)
+    const ranked = submitted.map((s) => ({ s, st: this.bestStats(s) }));
+    ranked.sort((a, b) => (b.st.pct - a.st.pct) || (a.st.dur - b.st.dur));
+    const rankMap = new Map();
+    ranked.forEach(({ s }, i) => rankMap.set(s.id, i + 1));
+
+    // Baho bo'yicha guruhlar
+    const groups = [
+      { baho: 5, cls: "baho-5", label: "A'lo (5 baho)" },
+      { baho: 4, cls: "baho-4", label: "Yaxshi (4 baho)" },
+      { baho: 3, cls: "baho-3", label: "Qoniqarli (3 baho)" },
+      { baho: 2, cls: "baho-2", label: "Qoniqarsiz (2 baho)" },
+    ];
+    groups.forEach((g) => {
+      const items = ranked.filter(({ s }) => s.baho === g.baho);
+      if (!items.length) return;
+      const groupEl = document.createElement("div");
+      groupEl.className = "baho-group";
+      groupEl.innerHTML = `<div class="baho-group-title"><span class="baho-badge ${g.cls}">${g.baho}</span> ${g.label} — ${items.length} ta</div>`;
+      const list = document.createElement("div");
+      list.className = "results-list";
+      items.forEach(({ s, st }) => list.appendChild(this._resultRow(s, st, rankMap.get(s.id))));
+      groupEl.appendChild(list);
+      box.appendChild(groupEl);
+    });
+    // Topshirmaganlar
+    if (pending.length) {
+      const groupEl = document.createElement("div");
+      groupEl.className = "baho-group";
+      groupEl.innerHTML = `<div class="baho-group-title"><span class="baho-badge baho-none">?</span> Hali topshirmaganlar — ${pending.length} ta</div>`;
+      const list = document.createElement("div");
+      list.className = "results-list";
+      pending.forEach((s) => {
+        const initials = ((s.first_name[0] || "") + (s.last_name[0] || "")).toUpperCase();
+        const row = document.createElement("div");
+        row.className = "student-row" + (s.blocked ? " blocked" : "");
+        row.innerHTML = `
+          <div class="student-avatar">${UI.esc(initials)}</div>
+          <div class="student-info">
+            <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</div>
+            <div class="sub">natija yo'q</div>
           </div>
+          <span class="status-pill pending">❓ Hali topshirmagan</span>`;
+        row.onclick = () => this.showStudentDetail(s, null);
+        list.appendChild(row);
+      });
+      groupEl.appendChild(list);
+      box.appendChild(groupEl);
+    }
+  },
+
+  _resultRow(s, st, rank) {
+    const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : rank;
+    const badgeCls = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
+    const initials = ((s.first_name[0] || "") + (s.last_name[0] || "")).toUpperCase();
+    const pill = s.has_violation
+      ? '<span class="status-pill danger">⚠️ Xavf</span>'
+      : `<span class="status-pill done">${st.count} ta test</span>`;
+    const row = document.createElement("div");
+    row.className = "student-row" + (rank === 1 ? " top1" : "") + (s.blocked ? " blocked" : "");
+    row.innerHTML = `
+      <div class="rank-badge ${badgeCls}">${medal}</div>
+      <div class="student-avatar">${UI.esc(initials)}</div>
+      <div class="student-info">
+        <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${s.blocked ? ' <span class="pill-blocked">bloklangan</span>' : ""}</div>
+        <div class="rank-meta">
+          ${this.starsFor(st.pct)}
+          <span class="rank-score">Eng yaxshi: ${st.pct}% • ${this.fmtDur(st.dur)}${s.monthly_pct != null ? ` • 📅 bu oy: ${s.monthly_pct}%` : ""}</span>
         </div>
-        ${pill}
-      `;
-      row.onclick = () => this.showStudentDetail(s, rank);
-      box.appendChild(row);
-    });
-    pending.forEach((s) => {
-      const initials = ((s.first_name[0] || "") + (s.last_name[0] || "")).toUpperCase();
-      const row = document.createElement("div");
-      row.className = "student-row";
-      row.innerHTML = `
-        <div class="rank-badge">—</div>
-        <div class="student-avatar">${UI.esc(initials)}</div>
-        <div class="student-info">
-          <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</div>
-          <div class="sub">natija yo'q</div>
-        </div>
-        <span class="status-pill pending">❓ Hali topshirmagan</span>
-      `;
-      row.onclick = () => this.showStudentDetail(s, null);
-      box.appendChild(row);
-    });
+      </div>
+      ${pill}`;
+    row.onclick = () => this.showStudentDetail(s, rank);
+    return row;
   },
 
   fmtDur(sec) {
@@ -494,26 +567,40 @@ const Teacher = {
     if (!res.ok) { box.innerHTML = ""; return; }
     if (!res.students.length) { box.innerHTML = '<p class="muted">Bu sinfda hali o\'quvchi yo\'q. Yuqoridan qo\'shing.</p>'; return; }
     box.innerHTML = "";
+    const isAdmin = State.teacher && State.teacher.is_admin; // direktor/zavuch
     res.students.forEach((s) => {
       const row = document.createElement("div");
-      row.className = "student-row";
+      row.className = "student-row" + (s.blocked ? " blocked" : "");
       row.style.cursor = "default";
       const initials = ((s.first_name[0] || "") + (s.last_name[0] || "")).toUpperCase();
+      const parentBtn = isAdmin ? `<button class="btn btn-secondary btn-sm" data-parent="${s.id}">👪 Ota-ona logini</button>` : "";
+      const blockBtn = isAdmin ? `<button class="btn btn-ghost btn-sm" data-block="${s.id}">${s.blocked ? "✅ Blokdan chiqarish" : "🚫 Bloklash"}</button>` : "";
       row.innerHTML = `
         <div class="student-avatar">${UI.esc(initials)}</div>
         <div class="student-info">
-          <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</div>
+          <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${s.blocked ? ' <span class="pill-blocked">bloklangan</span>' : ""}</div>
           <div class="sub">${UI.esc(s.class_name)}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" data-parent="${s.id}">👪 Ota-ona logini</button>
+          ${parentBtn}
+          ${blockBtn}
           <button class="btn btn-danger btn-sm" data-del="${s.id}">🗑️ O'chirish</button>
         </div>
       `;
       row.querySelector("[data-del]").onclick = () => this.deleteStudent(s.id, s, cls);
-      row.querySelector("[data-parent]").onclick = () => this.generateParent(s);
+      if (isAdmin) {
+        row.querySelector("[data-parent]").onclick = () => this.generateParent(s);
+        row.querySelector("[data-block]").onclick = () => this.toggleBlock(s, cls);
+      }
       box.appendChild(row);
     });
+  },
+
+  async toggleBlock(s, cls) {
+    const res = await API.post(`/api/students/${s.id}/block`, { blocked: !s.blocked });
+    if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+    UI.toast(res.blocked ? "O'quvchi bloklandi 🚫" : "Blokdan chiqarildi ✅", "ok");
+    this.loadStudents(cls);
   },
 
   async addStudent() {
@@ -840,13 +927,16 @@ const Teacher = {
     const res = await API.get("/api/teachers");
     const box = document.getElementById("teachers-list");
     if (!res.ok) { box.innerHTML = ""; return; }
+    // Rol tanlash faqat direktorда ko'rinadi (direktor zavuch/o'qituvchi qo'sha oladi)
+    const roleSel = document.getElementById("tch-role");
+    if (roleSel) roleSel.style.display = res.my_role === "director" ? "" : "none";
     box.innerHTML = "";
     res.teachers.forEach((t) => {
+      const roleTag = `<span class="role-tag role-${t.role}">${UI.esc(t.role_label)}</span>`;
       const row = document.createElement("div");
       row.className = "parent-cred";
       row.innerHTML = `
-        <div class="pc-info"><b>${UI.esc(t.username)}</b> ${t.is_me ? '<span class="chip on">Siz</span>' : ""}
-          <div class="muted" style="font-size:.8rem">${UI.esc(t.created_at || "")}</div></div>
+        <div class="pc-info"><b>${UI.esc(t.username)}</b> ${roleTag} ${t.is_me ? '<span class="chip on">Siz</span>' : ""}</div>
         ${t.is_me ? '<span class="muted">(joriy hisob)</span>' : `<button class="btn btn-danger btn-sm" data-del="${t.id}">🗑️ O'chirish</button>`}`;
       const db = row.querySelector("[data-del]");
       if (db) db.onclick = () => this.deleteTeacher(t.id, t.username);
@@ -857,11 +947,13 @@ const Teacher = {
   async addTeacher() {
     const u = document.getElementById("tch-user").value.trim();
     const p = document.getElementById("tch-pass").value;
+    const roleSel = document.getElementById("tch-role");
+    const role = roleSel && roleSel.style.display !== "none" ? roleSel.value : "teacher";
     if (!u) return UI.toast("Login kiriting", "err");
     if (p.length < 4) return UI.toast("Parol kamida 4 ta belgi bo'lsin", "err");
-    const res = await API.post("/api/teachers", { username: u, password: p });
+    const res = await API.post("/api/teachers", { username: u, password: p, role });
     if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
-    UI.toast("O'qituvchi qo'shildi ✔", "ok");
+    UI.toast("Panel qo'shildi ✔", "ok");
     document.getElementById("tch-user").value = "";
     document.getElementById("tch-pass").value = "";
     this.loadTeachers();

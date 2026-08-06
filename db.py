@@ -172,16 +172,23 @@ def init_db():
         _ensure_column(conn, "students", "parent_password_plain", "TEXT")
         _ensure_column(conn, "lessons", "image_name", "TEXT")
         _ensure_column(conn, "teachers", "is_admin", "INTEGER DEFAULT 0")
-        # Standart o'qituvchi (admin) hisobini yaratamiz (agar mavjud bo'lmasa)
+        # Rollar: director (boshqaruv) > zavuch > teacher
+        _ensure_column(conn, "teachers", "role", "TEXT DEFAULT 'teacher'")
+        # O'quvchini bloklash imkoniyati
+        _ensure_column(conn, "students", "blocked", "INTEGER DEFAULT 0")
+        # Standart hisob (direktor) yaratamiz (agar hech kim bo'lmasa)
         cur = conn.execute("SELECT COUNT(*) AS c FROM teachers")
         if cur.fetchone()["c"] == 0:
             conn.execute(
-                "INSERT INTO teachers (username, password_hash, is_admin, created_at) VALUES (?, ?, 1, ?)",
+                "INSERT INTO teachers (username, password_hash, is_admin, role, created_at) VALUES (?, ?, 1, 'director', ?)",
                 (DEFAULT_ADMIN_USER, generate_password_hash(DEFAULT_ADMIN_PASS), now_iso()),
             )
-        # Kamida bitta admin bo'lishini ta'minlaymiz (eng eski o'qituvchi)
-        if conn.execute("SELECT COUNT(*) AS c FROM teachers WHERE is_admin = 1").fetchone()["c"] == 0:
-            conn.execute("UPDATE teachers SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM teachers)")
+        # Eski hisoblarni rolga o'tkazamiz: is_admin=1 -> director
+        conn.execute("UPDATE teachers SET role = 'director' WHERE is_admin = 1 AND (role IS NULL OR role = 'teacher')")
+        conn.execute("UPDATE teachers SET role = 'teacher' WHERE role IS NULL")
+        # Kamida bitta direktor bo'lishini ta'minlaymiz
+        if conn.execute("SELECT COUNT(*) AS c FROM teachers WHERE role = 'director'").fetchone()["c"] == 0:
+            conn.execute("UPDATE teachers SET role = 'director', is_admin = 1 WHERE id = (SELECT MIN(id) FROM teachers)")
         conn.commit()
     finally:
         conn.close()
