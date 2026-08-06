@@ -1112,6 +1112,16 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 .cred-pill { background: var(--inp-bg); border: 1px solid var(--inp-border); border-radius: 10px; padding: 6px 12px; font-family: monospace; font-weight: 700; }
 .cred-pill b { color: var(--primary-2); }
 
+/* Maktab konteksti banneri */
+.school-banner {
+  display: flex; align-items: center; gap: 10px;
+  background: linear-gradient(135deg, rgba(124,92,255,.18), rgba(255,92,174,.18));
+  border: 1.5px solid var(--primary-2); border-radius: var(--radius);
+  padding: 12px 18px; margin-bottom: 18px; font-size: 1.02rem;
+}
+.school-card-stats { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0; }
+.school-card-stats span { background: var(--inp-bg); border: 1px solid var(--inp-border); padding: 4px 12px; border-radius: 999px; font-size: .85rem; }
+
 /* Jonli kuzatuv */
 .live-timer { text-align: right; flex-shrink: 0; }
 .live-time { font-size: 1.4rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--accent); display: block; }

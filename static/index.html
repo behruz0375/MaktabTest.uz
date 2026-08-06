@@ -47,6 +47,11 @@
             <input name="last_name" required placeholder=" ">
             <label>Familiya</label>
           </div>
+          <div class="field" id="student-school-field" style="display:none">
+            <select name="school_id">
+              <option value="" disabled selected>Maktabingizni tanlang</option>
+            </select>
+          </div>
           <div class="field">
             <select name="class_name" required>
               <option value="" disabled selected>Sinfingizni tanlang</option>
@@ -192,6 +197,7 @@
     <aside class="sidebar">
       <div class="sidebar-brand">📚 <span>O'qituvchi paneli</span></div>
       <nav class="side-nav">
+        <button class="side-btn" data-section="schools">🏫 <span>Maktablar (boshqaruv)</span></button>
         <button class="side-btn active" data-section="stats">🏆 <span>Reyting / Statistika</span></button>
         <button class="side-btn" data-section="create">➕ <span>Test qo'shish</span></button>
         <button class="side-btn" data-section="tests">📋 <span>Testlarim</span></button>
@@ -208,6 +214,32 @@
     </aside>
 
     <main class="panel-main">
+      <!-- Maktab konteksti banneri (owner maktabga kirganda) -->
+      <div id="school-banner" class="school-banner" style="display:none">
+        🏫 Ko'rilmoqda: <b id="school-banner-name"></b>
+        <button id="school-exit" class="btn btn-ghost btn-sm" style="margin-left:auto">← Maktablar ro'yxatiga</button>
+      </div>
+
+      <!-- === Maktablar (owner boshqaruvi) === -->
+      <section id="sec-schools" class="panel-section">
+        <div class="section-head">
+          <h2>🏫 Maktablar boshqaruvi</h2>
+        </div>
+        <div class="card">
+          <div class="live-head" style="margin-bottom:14px">
+            <span class="live-dot"></span> Jami <b id="schools-count">0</b> ta maktab
+          </div>
+          <h3 style="margin-bottom:10px">➕ Yangi maktab qo'shish</h3>
+          <div class="grid-4">
+            <div class="field-row"><label>Maktab nomi</label><input id="sch-name" class="inp" placeholder="Masalan: 5-maktab"></div>
+            <div class="field-row"><label>Zavuch login</label><input id="sch-user" class="inp" placeholder="Masalan: zavuch5"></div>
+            <div class="field-row"><label>Zavuch parol</label><input id="sch-pass" class="inp" type="text" placeholder="Kamida 4 ta belgi"></div>
+          </div>
+          <button id="sch-add" class="btn btn-success">➕ Maktab yaratish</button>
+        </div>
+        <div id="schools-list" class="cards-grid"></div>
+      </section>
+
       <!-- === Reyting / Statistika === -->
       <section id="sec-stats" class="panel-section">
         <div class="section-head">

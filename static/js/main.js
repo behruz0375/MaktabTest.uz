@@ -9,6 +9,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await UI.loadMeta();
 
+  // O'quvchi uchun maktablar ro'yxati (bilim olishда tanlanadi)
+  const schoolRes = await API.get("/api/schools/public");
+  const schoolSel = document.querySelector('#student-login [name="school_id"]');
+  if (schoolRes.ok && schoolSel) {
+    schoolRes.schools.forEach((s) => {
+      const o = document.createElement("option"); o.value = s.id; o.textContent = s.name; schoolSel.appendChild(o);
+    });
+  }
+
   let studentMode = "test"; // test | learn
 
   const clearErrors = () =>
@@ -30,6 +39,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     studentMode = mode;
     document.querySelectorAll(".mode-btn").forEach((x) => x.classList.toggle("active", x.dataset.mode === mode));
     document.getElementById("student-code-field").style.display = mode === "learn" ? "none" : "";
+    document.getElementById("student-school-field").style.display = mode === "learn" ? "" : "none";
     document.getElementById("student-submit-btn").textContent = mode === "learn" ? "Bilim olishga kirish →" : "Testga kirish →";
   }
   document.querySelectorAll(".mode-btn").forEach((mb) => {
@@ -56,8 +66,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!cls) { errEl.textContent = "Sinfingizni tanlang"; return; }
 
     if (studentMode === "learn") {
+      const schoolId = f.elements.school_id.value;
+      if (!schoolId) { errEl.textContent = "Maktabingizni tanlang"; return; }
       btn.disabled = true; btn.textContent = "Kirilmoqda...";
-      const res = await API.post("/api/learning/enter", { first_name: first, last_name: last, class_name: cls });
+      const res = await API.post("/api/learning/enter", { first_name: first, last_name: last, class_name: cls, school_id: schoolId });
       btn.disabled = false; btn.textContent = "Bilim olishga kirish →";
       if (!res.ok) { errEl.textContent = res.error || "Xatolik"; return; }
       f.reset();

@@ -51,6 +51,12 @@ def get_conn():
 
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS schools (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS teachers (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT UNIQUE NOT NULL,
@@ -172,23 +178,43 @@ def init_db():
         _ensure_column(conn, "students", "parent_password_plain", "TEXT")
         _ensure_column(conn, "lessons", "image_name", "TEXT")
         _ensure_column(conn, "teachers", "is_admin", "INTEGER DEFAULT 0")
-        # Rollar: director (boshqaruv) > zavuch > teacher
+        # Rollar: owner (boshqaruv/egasi) > zavuch (maktab admini) > teacher
         _ensure_column(conn, "teachers", "role", "TEXT DEFAULT 'teacher'")
         # O'quvchini bloklash imkoniyati
         _ensure_column(conn, "students", "blocked", "INTEGER DEFAULT 0")
-        # Standart hisob (direktor) yaratamiz (agar hech kim bo'lmasa)
+        # Ko'p maktab (multi-tenancy): har jadvalga school_id
+        _ensure_column(conn, "teachers", "school_id", "INTEGER")
+        _ensure_column(conn, "students", "school_id", "INTEGER")
+        _ensure_column(conn, "tests", "school_id", "INTEGER")
+        _ensure_column(conn, "lessons", "school_id", "INTEGER")
+        # Standart hisob (egasi/owner) yaratamiz (agar hech kim bo'lmasa)
         cur = conn.execute("SELECT COUNT(*) AS c FROM teachers")
         if cur.fetchone()["c"] == 0:
             conn.execute(
-                "INSERT INTO teachers (username, password_hash, is_admin, role, created_at) VALUES (?, ?, 1, 'director', ?)",
+                "INSERT INTO teachers (username, password_hash, is_admin, role, created_at) VALUES (?, ?, 1, 'owner', ?)",
                 (DEFAULT_ADMIN_USER, generate_password_hash(DEFAULT_ADMIN_PASS), now_iso()),
             )
-        # Eski hisoblarni rolga o'tkazamiz: is_admin=1 -> director
-        conn.execute("UPDATE teachers SET role = 'director' WHERE is_admin = 1 AND (role IS NULL OR role = 'teacher')")
+        # Rolga o'tkazish: eski director (maktabsiz, eng katta) -> owner
+        conn.execute("UPDATE teachers SET role = 'owner' WHERE role = 'director' AND school_id IS NULL")
         conn.execute("UPDATE teachers SET role = 'teacher' WHERE role IS NULL")
-        # Kamida bitta direktor bo'lishini ta'minlaymiz
-        if conn.execute("SELECT COUNT(*) AS c FROM teachers WHERE role = 'director'").fetchone()["c"] == 0:
-            conn.execute("UPDATE teachers SET role = 'director', is_admin = 1 WHERE id = (SELECT MIN(id) FROM teachers)")
+        # Kamida bitta egasi (owner) bo'lishini ta'minlaymiz
+        if conn.execute("SELECT COUNT(*) AS c FROM teachers WHERE role = 'owner'").fetchone()["c"] == 0:
+            conn.execute("UPDATE teachers SET role = 'owner', is_admin = 1, school_id = NULL WHERE id = (SELECT MIN(id) FROM teachers)")
+        # Eski (maktabsiz) ma'lumotlarni standart maktabga biriktiramiz
+        need = (conn.execute("SELECT COUNT(*) AS c FROM students WHERE school_id IS NULL").fetchone()["c"]
+                or conn.execute("SELECT COUNT(*) AS c FROM tests WHERE school_id IS NULL").fetchone()["c"]
+                or conn.execute("SELECT COUNT(*) AS c FROM teachers WHERE school_id IS NULL AND role != 'owner'").fetchone()["c"])
+        if need:
+            row = conn.execute("SELECT id FROM schools ORDER BY id LIMIT 1").fetchone()
+            if row:
+                default_sid = row["id"]
+            else:
+                default_sid = conn.execute("INSERT INTO schools (name, created_at) VALUES (?, ?)",
+                                           ("Asosiy maktab", now_iso())).lastrowid
+            conn.execute("UPDATE students SET school_id = ? WHERE school_id IS NULL", (default_sid,))
+            conn.execute("UPDATE tests SET school_id = ? WHERE school_id IS NULL", (default_sid,))
+            conn.execute("UPDATE lessons SET school_id = ? WHERE school_id IS NULL", (default_sid,))
+            conn.execute("UPDATE teachers SET school_id = ? WHERE school_id IS NULL AND role != 'owner'", (default_sid,))
         conn.commit()
     finally:
         conn.close()

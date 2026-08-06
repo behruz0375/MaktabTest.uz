@@ -39,6 +39,9 @@ const Teacher = {
     document.getElementById("tch-add").onclick = () => this.addTeacher();
     // Statistika
     document.getElementById("stats-refresh").onclick = () => this.loadStats();
+    // Maktablar (owner)
+    document.getElementById("sch-add").onclick = () => this.addSchool();
+    document.getElementById("school-exit").onclick = () => this.exitSchool();
   },
 
   toggleLessonType(type) {
@@ -51,20 +54,105 @@ const Teacher = {
     this.history = [];
     this.currentSection = null;
     const t = State.teacher || {};
-    const isAdmin = t.is_admin; // direktor yoki zavuch
-    // Faqat direktor/zavuch ko'radigan bo'limlar
-    ["teachers", "parents"].forEach((sec) => {
-      const btn = document.querySelector(`.side-btn[data-section="${sec}"]`);
-      if (btn) btn.style.display = isAdmin ? "" : "none";
-    });
-    // Sidebar sarlavhasiga rol yorlig'i
+    // Owner allaqachon maktabga kirgan bo'lishi mumkin (sessiya)
+    if (t.role === "owner" && t.view_school_id) {
+      this.viewSchool = { id: t.view_school_id, name: t.view_school_name };
+    }
+    this.applyRoleUI();
+    const isOwner = t.role === "owner";
+    if (isOwner && !this.viewSchool) this.showSection("schools", false);
+    else this.showSection("stats", false);
+    UI.showView("view-teacher");
+  },
+
+  applyRoleUI() {
+    const t = State.teacher || {};
+    const isOwner = t.role === "owner";
+    const isAdmin = t.is_admin; // owner yoki zavuch
+    const entered = isOwner ? !!this.viewSchool : true;
+    const show = (sec, on) => { const b = document.querySelector(`.side-btn[data-section="${sec}"]`); if (b) b.style.display = on ? "" : "none"; };
+    show("schools", isOwner);
+    ["stats", "create", "tests", "lessons", "results", "live", "learning", "students"].forEach((s) => show(s, entered));
+    ["teachers", "parents"].forEach((s) => show(s, isAdmin && entered));
+    show("settings", true);
+    const banner = document.getElementById("school-banner");
+    if (isOwner && this.viewSchool) {
+      banner.style.display = "flex";
+      document.getElementById("school-banner-name").textContent = this.viewSchool.name;
+    } else {
+      banner.style.display = "none";
+    }
     const brand = document.querySelector("#view-teacher .sidebar-brand span");
     if (brand) brand.textContent = (t.role_label || "O'qituvchi") + " paneli";
-    // "O'qituvchilar" tugmasi matnini rolga moslash
-    const tchBtnSpan = document.querySelector('.side-btn[data-section="teachers"] span');
-    if (tchBtnSpan) tchBtnSpan.textContent = t.role === "director" ? "Panellar boshqaruvi" : "O'qituvchilar";
+  },
+
+  async enterSchool(school) {
+    const res = await API.post("/api/owner/enter-school", { school_id: school.id });
+    if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+    this.viewSchool = { id: res.school_id, name: res.school_name };
+    this.applyRoleUI();
     this.showSection("stats", false);
-    UI.showView("view-teacher");
+    UI.toast(res.school_name + " boshqaruvidasiz", "ok");
+  },
+  async exitSchool() {
+    await API.post("/api/owner/exit-school");
+    this.viewSchool = null;
+    this.applyRoleUI();
+    this.showSection("schools", false);
+  },
+
+  async loadSchools() {
+    const res = await API.get("/api/schools");
+    if (!res.ok) return;
+    document.getElementById("schools-count").textContent = res.count;
+    const box = document.getElementById("schools-list");
+    if (!res.schools.length) { box.innerHTML = '<p class="muted">Hali maktab qo\'shilmagan. Yuqoridan qo\'shing.</p>'; return; }
+    box.innerHTML = "";
+    res.schools.forEach((s) => {
+      const card = document.createElement("div");
+      card.className = "test-card";
+      card.innerHTML = `
+        <h3>🏫 ${UI.esc(s.name)}</h3>
+        <div class="school-card-stats">
+          <span>👥 ${s.students}</span><span>🧑‍🏫 ${s.teachers}</span><span>📋 ${s.tests} test</span>
+        </div>
+        <div class="muted">Zavuch: ${s.zavuch ? UI.esc(s.zavuch) : "—"}</div>
+        <div class="card-actions">
+          <button class="btn btn-secondary btn-sm" data-enter="${s.id}">⚙️ Boshqarish</button>
+          <button class="btn btn-danger btn-sm" data-del="${s.id}">🗑️ O'chirish</button>
+        </div>`;
+      card.querySelector("[data-enter]").onclick = () => this.enterSchool(s);
+      card.querySelector("[data-del]").onclick = () => this.deleteSchool(s);
+      box.appendChild(card);
+    });
+  },
+  async addSchool() {
+    const name = document.getElementById("sch-name").value.trim();
+    const user = document.getElementById("sch-user").value.trim();
+    const pass = document.getElementById("sch-pass").value;
+    if (!name) return UI.toast("Maktab nomini kiriting", "err");
+    if (!user) return UI.toast("Zavuch login kiriting", "err");
+    if (pass.length < 4) return UI.toast("Parol kamida 4 ta belgi bo'lsin", "err");
+    const res = await API.post("/api/schools", { name, username: user, password: pass });
+    if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+    UI.modal(`<span class="modal-icon">🏫</span><h2 style="text-align:center">Maktab yaratildi!</h2>
+      <p style="text-align:center">"${UI.esc(name)}" uchun zavuch hisobi:</p>
+      <div class="code-reveal"><div class="lbl">Login</div><div class="code" style="font-size:1.6rem;letter-spacing:2px">${UI.esc(res.username)}</div>
+      <div class="lbl" style="margin-top:10px">Parol</div><div class="code" style="font-size:1.6rem;letter-spacing:2px">${UI.esc(res.password)}</div></div>
+      <p class="muted" style="text-align:center">Bu ma'lumotni maktab zavuchiga bering.</p>
+      <div style="text-align:center"><button class="btn btn-primary" id="sch-ok">Tushunarli 👍</button></div>`);
+    document.getElementById("sch-ok").onclick = () => UI.closeModal();
+    document.getElementById("sch-name").value = "";
+    document.getElementById("sch-user").value = "";
+    document.getElementById("sch-pass").value = "";
+    this.loadSchools();
+  },
+  deleteSchool(s) {
+    this.confirm("Maktabni o'chirish", `"${s.name}" va uning BARCHA ma'lumotlari (o'quvchilar, testlar, natijalar, o'qituvchilar) butunlay o'chiriladi!`, async () => {
+      const res = await API.del(`/api/schools/${s.id}`);
+      if (res.ok) { UI.toast("Maktab o'chirildi", "ok"); this.loadSchools(); }
+      else UI.toast(res.error || "Xatolik", "err");
+    });
   },
 
   showSection(id, push = true) {
@@ -86,6 +174,7 @@ const Teacher = {
     if (id === "parents") this.renderParClassButtons();
     if (id === "teachers") this.loadTeachers();
     if (id === "live") this.startLive(); else this.stopLive();
+    if (id === "schools") this.loadSchools();
     window.scrollTo(0, 0);
   },
 
@@ -209,6 +298,7 @@ const Teacher = {
 
   async logout() {
     this.stopLive();
+    this.viewSchool = null;
     await API.post("/api/teacher/logout");
     State.teacher = null;
     UI.showView("view-login");
