@@ -36,6 +36,7 @@ const Teacher = {
     // Mutolaa natijalari
     document.getElementById("lrn-class").onchange = (e) => this.loadLearning(e.target.value);
     document.getElementById("lrn-subject").onchange = () => { if (this.currentLrnClass) this.loadLearning(this.currentLrnClass); };
+    document.getElementById("lrn-refresh").onclick = async () => { if (this.currentLrnClass) { await this.loadLearning(this.currentLrnClass); UI.toast("Mutolaa natijalari yangilandi ✓", "ok", 1500); } };
     // Ota-onalar
     document.getElementById("par-class").onchange = (e) => this.loadParents(e.target.value);
     // O'qituvchilar
@@ -45,6 +46,9 @@ const Teacher = {
     // Maktab ma'lumotlarini tozalash (zavuch/boshqaruv)
     const clearBtn = document.getElementById("clear-data-btn");
     if (clearBtn) clearBtn.onclick = () => this.clearSchoolData();
+    // Ish vaqtini sozlash (boshqaruv)
+    const whBtn = document.getElementById("work-hours-btn");
+    if (whBtn) whBtn.onclick = () => this.openWorkHours();
     // Telefon burger menyu
     const burger = document.getElementById("burger");
     const overlay = document.getElementById("sidebar-overlay");
@@ -172,6 +176,8 @@ const Teacher = {
     setDisp("res-refresh", !plainTeacher);
     // Maktab ma'lumotlarini tozalash — faqat zavuch/boshqaruv (maktabga kirgan holda)
     setDisp("clear-data-box", isAdmin && entered);
+    // Ish vaqtini sozlash — faqat boshqaruv (egasi)
+    setDisp("work-hours-box", isOwner);
   },
 
   async enterSchool(school) {
@@ -317,9 +323,16 @@ const Teacher = {
     const box = document.getElementById("res-class-buttons");
     if (!box || box.dataset.done === "1") return;
     box.innerHTML = "";
+    const allBtn = document.createElement("button");
+    allBtn.className = "class-btn";
+    allBtn.dataset.cls = "__all__";
+    allBtn.textContent = "🏫 Hamma";
+    allBtn.onclick = () => { document.getElementById("res-class").value = "__all__"; this.loadResults("__all__"); };
+    box.appendChild(allBtn);
     State.meta.classes.forEach((c) => {
       const b = document.createElement("button");
       b.className = "class-btn";
+      b.dataset.cls = c;
       b.textContent = c;
       b.onclick = () => {
         document.getElementById("res-class").value = c;
@@ -819,8 +832,9 @@ const Teacher = {
 
   async loadResults(cls) {
     if (!cls) return;
+    const isAll = cls === "__all__";
     document.querySelectorAll("#res-class-buttons .class-btn").forEach((b) =>
-      b.classList.toggle("active", b.textContent === cls)
+      b.classList.toggle("active", b.dataset.cls ? b.dataset.cls === cls : b.textContent === cls)
     );
     const subj = document.getElementById("res-subject").value;
     const titleEl = document.getElementById("results-title");
@@ -828,7 +842,9 @@ const Teacher = {
     const box = document.getElementById("results-list");
     if (!res.ok) { box.innerHTML = ""; UI.toast(res.error || "Xatolik", "err"); return; }
     titleEl.style.display = "flex";
-    titleEl.innerHTML = `🏆 ${UI.esc(cls)} sinf — natijalar${subj ? " • " + UI.esc(subj) : ""}`;
+    titleEl.innerHTML = isAll
+      ? `🏆 Barcha sinflar — natijalar${subj ? " • " + UI.esc(subj) : ""}`
+      : `🏆 ${UI.esc(cls)} sinf — natijalar${subj ? " • " + UI.esc(subj) : ""}`;
     this.currentResClass = cls;
     document.getElementById("results-export").style.display = "flex";
     if (!res.students.length) {
@@ -902,10 +918,18 @@ const Teacher = {
     }
   },
 
+  bahoColor(b) { return b >= 5 ? "#23c483" : b >= 4 ? "#3ca6ff" : b >= 3 ? "#f8a928" : b >= 2 ? "#e94b4b" : "#c0392b"; },
+  bahoBadgeHtml(b, label) {
+    if (!b) return "";
+    return `<span title="${label || "Baho"}" style="display:inline-block;min-width:24px;text-align:center;background:${this.bahoColor(b)};color:#fff;border-radius:7px;padding:1px 8px;font-weight:900;margin-left:6px">${b}</span>`;
+  },
+
   _resultRow(s, st, rank) {
     const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : rank;
     const badgeCls = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
     const initials = ((s.first_name[0] || "") + (s.last_name[0] || "")).toUpperCase();
+    const baho = this.bahoOf(st.pct);
+    const needsRetake = (s.retake_test_ids && s.retake_test_ids.length) ? '<span class="status-pill" style="background:#f8a928;color:#111">🔁 Qayta topshirishi kerak</span>' : "";
     const pill = s.has_violation
       ? '<span class="status-pill danger">⚠️ Xavf</span>'
       : `<span class="status-pill done">${st.count} ta test</span>`;
@@ -915,13 +939,13 @@ const Teacher = {
       <div class="rank-badge ${badgeCls}">${medal}</div>
       <div class="student-avatar">${UI.esc(initials)}</div>
       <div class="student-info">
-        <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${s.blocked ? ' <span class="pill-blocked">bloklangan</span>' : ""}</div>
+        <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${this.bahoBadgeHtml(baho, "Baho")}${s.class_name ? ` <span class="role-tag role-teacher">${UI.esc(s.class_name)}</span>` : ""}${s.blocked ? ' <span class="pill-blocked">bloklangan</span>' : ""}</div>
         <div class="rank-meta">
           ${this.starsFor(st.pct)}
           <span class="rank-score">Eng yaxshi: ${st.pct}% • ${this.fmtDur(st.dur)}${s.monthly_pct != null ? ` • 📅 bu oy: ${s.monthly_pct}%` : ""}</span>
         </div>
       </div>
-      ${pill}`;
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${needsRetake}${pill}</div>`;
     row.onclick = () => this.showStudentDetail(s, rank);
     return row;
   },
@@ -1072,39 +1096,73 @@ const Teacher = {
     State.teacher = res.teacher;
   },
 
-  /* =============== MAKTAB MA'LUMOTLARINI TOZALASH =============== */
+  /* =============== MAKTAB MA'LUMOTLARINI TANLAB TOZALASH =============== */
   clearSchoolData() {
+    const opt = (val, title, desc) => `
+      <label class="chk-label" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--bg-2);border-radius:10px;margin-bottom:8px;cursor:pointer">
+        <input type="checkbox" class="cd-chk" value="${val}" style="margin-top:3px">
+        <span><b>${title}</b><br><span class="muted" style="font-size:.85rem">${desc}</span></span>
+      </label>`;
     UI.modal(`
       <span class="modal-icon">🧹</span>
-      <h2 style="text-align:center;color:var(--danger-1)">Maktab ma'lumotlarini tozalash</h2>
-      <p style="text-align:center">Haqiqatan ham shu maktab ma'lumotlarini tozalaysizmi?</p>
-      <div style="background:var(--bg-2);border-radius:12px;padding:14px 18px;margin:14px 0">
-        <div style="font-weight:800;color:var(--danger-1);margin-bottom:6px">🗑️ O'chiriladi:</div>
-        <ul style="margin:0 0 10px 18px;line-height:1.8">
-          <li>Barcha <b>testlar</b> (qo'shilgan/import qilingan)</li>
-          <li>Testlarning barcha <b>savollari</b></li>
-          <li>Barcha <b>natijalar</b> (o'quvchilar topshirgan testlar)</li>
-        </ul>
-        <div style="font-weight:800;color:var(--success-1);margin-bottom:6px">✅ Saqlanadi (tegilmaydi):</div>
-        <ul style="margin:0 0 0 18px;line-height:1.8">
-          <li>O'quvchilar ro'yxati va coinlar</li>
-          <li>O'qituvchilar va ota-ona loginlari</li>
-          <li>Darslar (bilim olish) va mutolaa faoliyati</li>
-        </ul>
+      <h2 style="text-align:center;color:var(--danger-1)">Ma'lumotlarni tanlab tozalash</h2>
+      <p style="text-align:center" class="muted">Nimalarni o'chirishni belgilang. Belgilanmaganlar tegilmaydi.</p>
+      <div style="margin:14px 0">
+        ${opt("tests", "🗑️ Testlar (savollar + natijalari bilan)", "Barcha testlar, savollar va ularning natijalari o'chadi")}
+        ${opt("results", "📊 Barcha test natijalari", "Testlar qoladi, faqat topshirilgan natijalar o'chadi")}
+        ${opt("month_results", "📅 Shu oylik natijalar (oylik baho)", "Faqat shu oyда topshirilgan natijalar o'chadi")}
+        ${opt("coins", "🪙 Coinlar (0 ga tushirish)", "Barcha o'quvchilar coinlari 0 bo'ladi")}
+        ${opt("durations", "⏱ Sarflangan vaqtlar (0 ga tushirish)", "Bilim olishда sanalgan vaqtlar 0 bo'ladi")}
       </div>
-      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <p class="muted" style="text-align:center;font-size:.85rem">✅ O'quvchilar, o'qituvchilar, ota-ona loginlari va darslar har doim saqlanadi.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px">
         <button class="btn btn-ghost" id="cd-no">Bekor qilish</button>
-        <button class="btn btn-danger" id="cd-yes">Ha, testlar va natijalarni tozalash</button>
+        <button class="btn btn-danger" id="cd-yes">🧹 Belgilanganlarни tozalash</button>
       </div>`, { large: true });
     document.getElementById("cd-no").onclick = () => UI.closeModal();
     document.getElementById("cd-yes").onclick = async () => {
-      const res = await API.post("/api/school/clear-data");
+      const targets = Array.from(document.querySelectorAll(".cd-chk:checked")).map((c) => c.value);
+      if (!targets.length) return UI.toast("Kamida bittasini belgilang", "err");
+      const res = await API.post("/api/school/clear-data", { targets });
       if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
       UI.closeModal();
-      UI.toast(`Tozalandi: ${res.tests_deleted} ta test, ${res.submissions_deleted} ta natija o'chirildi ✓`, "ok", 5000);
+      const r = res.report || {};
+      const parts = [];
+      if (r.tests_deleted != null) parts.push(`${r.tests_deleted} test`);
+      if (r.results_deleted != null) parts.push(`${r.results_deleted} natija`);
+      if (r.month_results_deleted != null) parts.push(`${r.month_results_deleted} oylik natija`);
+      if (r.coins_reset != null) parts.push(`${r.coins_reset} coin 0 ga`);
+      if (r.durations_reset) parts.push(`vaqtlar 0 ga`);
+      UI.toast("Tozalandi: " + (parts.join(", ") || "tayyor") + " ✓", "ok", 5000);
       if (this.currentSection === "tests") this.loadTests();
     };
   },
+
+  /* =============== ISH VAQTI + XODIM LOGIN/PAROL (boshqaruv) =============== */
+  openWorkHours() {
+    UI.modal(`
+      <span class="modal-icon">🕐</span>
+      <h2 style="text-align:center">Tizim ish vaqti</h2>
+      <p class="muted" style="text-align:center">O'quvchilar shu soatlar orasidagina test yecha/bilim ola oladi.</p>
+      <div class="grid-4" style="margin-top:10px">
+        <div class="field-row"><label>Boshlanish (soat)</label><input id="wh-start" class="inp" type="number" min="0" max="23" value="8"></div>
+        <div class="field-row"><label>Tugash (soat)</label><input id="wh-end" class="inp" type="number" min="1" max="24" value="21"></div>
+      </div>
+      <div style="text-align:center;margin-top:10px"><button class="btn btn-success" id="wh-save">💾 Saqlash</button></div>`);
+    API.get("/api/settings/work-hours").then((r) => {
+      if (r.ok) { document.getElementById("wh-start").value = r.start; document.getElementById("wh-end").value = r.end; }
+    });
+    document.getElementById("wh-save").onclick = async () => {
+      const start = parseInt(document.getElementById("wh-start").value, 10);
+      const end = parseInt(document.getElementById("wh-end").value, 10);
+      const res = await API.post("/api/settings/work-hours", { start, end });
+      if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+      UI.closeModal();
+      UI.toast(`Ish vaqti: ${res.start}:00–${res.end}:00 ✓`, "ok", 4000);
+    };
+  },
+
+  /* =============== DARSLAR (BILIM OLISH) =============== */
 
   /* =============== DARSLAR (BILIM OLISH) =============== */
   async loadLessons() {
@@ -1124,8 +1182,13 @@ const Teacher = {
           <span class="chip">🪙 ${l.coins_reward}</span>
           ${l.related_test ? '<span class="chip on">📝 test biriktirilgan</span>' : ""}
         </div>
-        <div class="card-actions"><button class="btn btn-danger btn-sm" data-del="${l.id}">🗑️ O'chirish</button></div>`;
+        <div class="card-actions">
+          ${l.can_edit !== false ? `<button class="btn btn-secondary btn-sm" data-edit="${l.id}">✏️ Tahrirlash</button>` : ""}
+          <button class="btn btn-danger btn-sm" data-del="${l.id}">🗑️ O'chirish</button>
+        </div>`;
       card.querySelector("[data-del]").onclick = () => this.deleteLesson(l.id, l.title);
+      const editBtn = card.querySelector("[data-edit]");
+      if (editBtn) editBtn.onclick = () => this.openLessonEdit(l);
       box.appendChild(card);
     });
   },
@@ -1253,6 +1316,62 @@ const Teacher = {
     xhr.send(fd);
   },
 
+  openLessonEdit(l) {
+    const subjOpts = (State.meta.subjects || []).map((s) => `<option value="${UI.esc(s)}" ${s === l.subject ? "selected" : ""}>${UI.esc(s)}</option>`).join("");
+    const allowed = this._allowedClasses();
+    const clsList = allowed || (State.meta.classes || []);
+    const clsOpts = clsList.map((c) => `<option value="${UI.esc(c)}" ${c === l.class_name ? "selected" : ""}>${UI.esc(c)}</option>`).join("");
+    const icons = { video: "🎬", audio: "🎧", text: "📖" };
+    const isText = l.type === "text";
+    UI.modal(`
+      <span class="modal-icon">✏️</span>
+      <h2 style="text-align:center">Darsni tahrirlash ${icons[l.type] || ""}</h2>
+      <div class="field-row"><label>Dars nomi</label><input id="le-title" class="inp" value="${UI.esc(l.title)}"></div>
+      <div class="grid-4">
+        <div class="field-row"><label>Fan</label><select id="le-subject" class="inp">${subjOpts}</select></div>
+        <div class="field-row"><label>Sinf</label><select id="le-class" class="inp">${clsOpts}</select></div>
+        <div class="field-row"><label>Coin mukofoti</label><input id="le-coins" class="inp" type="number" min="0" value="${l.coins_reward}"></div>
+      </div>
+      ${isText ? `<div class="field-row"><label>Matn</label><textarea id="le-text" class="inp" rows="6">${UI.esc(l.text_content || "")}</textarea></div>
+        <div class="field-row"><label>Rasmni almashtirish (ixtiyoriy)</label><input id="le-image" class="inp" type="file" accept="image/*"></div>`
+        : `<div class="field-row"><label>${l.type === "video" ? "Video" : "Audio"} faylni almashtirish (ixtiyoriy)</label><input id="le-file" class="inp" type="file" accept="${l.type}/*"></div>`}
+      <div style="text-align:center;margin-top:10px"><button class="btn btn-success" id="le-save">💾 Saqlash</button></div>
+      <div id="le-progress" class="muted" style="text-align:center;margin-top:8px"></div>`, { large: true });
+    document.getElementById("le-save").onclick = () => {
+      const fd = new FormData();
+      fd.append("title", document.getElementById("le-title").value.trim());
+      fd.append("subject", document.getElementById("le-subject").value);
+      fd.append("class_name", document.getElementById("le-class").value);
+      fd.append("coins_reward", document.getElementById("le-coins").value || "0");
+      if (isText) {
+        fd.append("text_content", document.getElementById("le-text").value);
+        const img = document.getElementById("le-image").files[0];
+        if (img) fd.append("image", img);
+      } else {
+        const f = document.getElementById("le-file").files[0];
+        if (f) fd.append("file", f);
+      }
+      const prog = document.getElementById("le-progress");
+      prog.textContent = "⏳ Saqlanmoqda...";
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/lessons/${l.id}`);
+      xhr.onload = () => {
+        let r = {}; try { r = JSON.parse(xhr.responseText); } catch (e) {}
+        if (xhr.status === 200 && r.ok) { UI.closeModal(); UI.toast("Dars yangilandi ✓", "ok"); this.loadLessons(); }
+        else { prog.textContent = ""; UI.toast(r.error || "Xatolik", "err", 5000); }
+      };
+      xhr.onerror = () => { prog.textContent = ""; UI.toast("Tarmoq xatosi", "err"); };
+      xhr.send(fd);
+    };
+  },
+
+  _allowedClasses() {
+    const t = State.teacher || {};
+    if (t.role !== "teacher") return null;
+    const ac = (t.assigned_classes || "").split(",").map((x) => x.trim()).filter(Boolean);
+    return ac.length ? ac : null;
+  },
+
   deleteLesson(id, title) {
     this.confirm("Darsni o'chirish", `"${title}" darsi o'chiriladi.`, async () => {
       const res = await API.del(`/api/lessons/${id}`);
@@ -1283,6 +1402,7 @@ const Teacher = {
     if (!res.ok) { box.innerHTML = ""; UI.toast(res.error || "Xatolik", "err"); return; }
     title.style.display = "flex";
     title.innerHTML = `🎓 ${UI.esc(cls)} sinf — mutolaa reytingi${subj ? " • " + UI.esc(subj) : ""}`;
+    const rbox = document.getElementById("lrn-refresh-box"); if (rbox) rbox.style.display = "block";
     if (!res.students.length) { box.innerHTML = '<p class="muted">Bu sinfda ma\'lumot yo\'q.</p>'; return; }
     box.innerHTML = "";
     res.students.forEach((s, i) => {
@@ -1296,7 +1416,7 @@ const Teacher = {
       row.innerHTML = `
         <div class="rank-badge ${badgeCls}">${medal}</div>
         <div class="student-info">
-          <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</div>
+          <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${this.bahoBadgeHtml(s.baho, "Oylik baho")}</div>
           <div class="sub">🎬 ${s.videos} video • 🎧 ${s.audios} audio • 📖 ${s.texts} matn${durTxt}${monthTxt}</div>
         </div>
         <span class="coin-badge">🪙 ${s.coins}</span>`;
@@ -1470,20 +1590,24 @@ const Teacher = {
       const row = document.createElement("div");
       row.className = "parent-cred";
       let actions = "";
+      const myRole = res.my_role;
       if (t.is_me) actions = '<span class="muted">(joriy hisob)</span>';
       else if (t.role === "teacher") {
         const acLabel = t.assigned_classes ? `📌 ${t.assigned_classes.split(",").length} sinf` : "📌 Hammasi";
         actions = `
-          <button class="btn btn-secondary btn-sm" data-pass="${t.id}">🔑 Parol</button>
+          <button class="btn btn-secondary btn-sm" data-creds="${t.id}">🔑 Login/parol</button>
           <button class="btn btn-ghost btn-sm" data-susp="${t.id}">${t.suspended ? "▶️ Faollashtirish" : "⏸️ To'xtatish"}</button>
           <button class="btn btn-ghost btn-sm" data-classes="${t.id}" title="Sinflarni biriktirish">${acLabel}</button>
           <button class="btn btn-danger btn-sm" data-del="${t.id}">🗑️ O'chirish</button>`;
+      } else if ((t.role === "zavuch" || t.role === "director") && myRole === "owner") {
+        // Boshqaruv zavuchning login/parolini joriy parolsiz yangilay oladi
+        actions = `<button class="btn btn-secondary btn-sm" data-creds="${t.id}">🔑 Login/parol o'zgartirish</button>`;
       }
       row.innerHTML = `
         <div class="pc-info"><b>${UI.esc(t.username)}</b> ${roleTag} ${suspTag} ${t.is_me ? '<span class="chip on">Siz</span>' : ""}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${actions}</div>`;
       const del = row.querySelector("[data-del]"); if (del) del.onclick = () => this.deleteTeacher(t.id, t.username);
-      const pass = row.querySelector("[data-pass]"); if (pass) pass.onclick = () => this.resetTeacherPassword(t);
+      const creds = row.querySelector("[data-creds]"); if (creds) creds.onclick = () => this.openTeacherCredentials(t);
       const susp = row.querySelector("[data-susp]"); if (susp) susp.onclick = () => this.suspendTeacher(t);
       const cls = row.querySelector("[data-classes]"); if (cls) cls.onclick = () => this.setTeacherClasses(t);
       box.appendChild(row);
@@ -1520,17 +1644,21 @@ const Teacher = {
     };
   },
 
-  resetTeacherPassword(t) {
+  openTeacherCredentials(t) {
     UI.modal(`
       <span class="modal-icon">🔑</span>
-      <h2 style="text-align:center">${UI.esc(t.username)} — yangi parol</h2>
-      <div class="field-row"><label>Yangi parol</label><input id="tpass-new" class="inp" type="text" placeholder="Kamida 4 ta belgi"></div>
-      <div style="text-align:center"><button class="btn btn-success" id="tpass-save">Saqlash</button></div>`);
-    document.getElementById("tpass-save").onclick = async () => {
-      const p = document.getElementById("tpass-new").value;
-      if (p.length < 4) return UI.toast("Parol kamida 4 ta belgi bo'lsin", "err");
-      const res = await API.post(`/api/teachers/${t.id}/password`, { password: p });
-      if (res.ok) { UI.closeModal(); UI.toast("Parol yangilandi ✔", "ok"); }
+      <h2 style="text-align:center">${UI.esc(t.username)} — login/parol</h2>
+      <p class="muted" style="text-align:center">Joriy parol shart emas. Faqat o'zgartirmoqchi bo'lgan maydonni to'ldiring.</p>
+      <div class="field-row"><label>Yangi login (ixtiyoriy)</label><input id="tc-user" class="inp" value="${UI.esc(t.username)}"></div>
+      <div class="field-row"><label>Yangi parol (ixtiyoriy)</label><input id="tc-pass" class="inp" type="text" placeholder="Kamida 4 ta belgi"></div>
+      <div style="text-align:center"><button class="btn btn-success" id="tc-save">💾 Saqlash</button></div>`);
+    document.getElementById("tc-save").onclick = async () => {
+      const u = document.getElementById("tc-user").value.trim();
+      const p = document.getElementById("tc-pass").value;
+      if (!u && !p) return UI.toast("Login yoki parol kiriting", "err");
+      if (p && p.length < 4) return UI.toast("Parol kamida 4 ta belgi bo'lsin", "err");
+      const res = await API.post(`/api/teachers/${t.id}/credentials`, { username: u, password: p });
+      if (res.ok) { UI.closeModal(); UI.toast("Login/parol yangilandi ✔", "ok"); this.loadTeachers(); }
       else UI.toast(res.error || "Xatolik", "err");
     };
   },

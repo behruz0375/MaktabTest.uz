@@ -102,6 +102,13 @@ const UI = {
       this.fillSelect(document.getElementById("ct-subject"), m.subjects, "Fanni tanlang");
       this.fillSelect(document.getElementById("ct-class"), m.classes, "Sinfni tanlang");
       this.fillSelect(document.getElementById("res-class"), m.classes, "— Sinf —");
+      // Natijalar: "Hamma sinflar" opsiyasi (barcha sinflar birga)
+      const rc = document.getElementById("res-class");
+      if (rc && !rc.querySelector('option[value="__all__"]')) {
+        const oall = document.createElement("option");
+        oall.value = "__all__"; oall.textContent = "🏫 Hamma sinflar";
+        rc.insertBefore(oall, rc.children[1] || null);
+      }
       this.fillSelect(document.getElementById("stu-class"), m.classes, "— Sinf —");
       // Fan filtri (natijalar) — "Barcha fanlar" birinchi
       const rs = document.getElementById("res-subject");

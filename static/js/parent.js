@@ -13,6 +13,15 @@ const Parent = {
     return m > 0 ? `${m} daq ${s} s` : `${s} s`;
   },
 
+  fmtDurLong(sec) {
+    sec = Math.round(sec || 0);
+    if (sec < 60) return sec + " s";
+    const m = Math.floor(sec / 60), s = sec % 60;
+    if (m < 60) return m + " daq" + (s ? " " + s + "s" : "");
+    const h = Math.floor(m / 60), rm = m % 60;
+    return h + " soat" + (rm ? " " + rm + " daq" : "");
+  },
+
   async enter() {
     const res = await API.get("/api/parent/activity");
     if (!res.ok) { UI.toast(res.error || "Xatolik", "err"); return; }
@@ -29,14 +38,16 @@ const Parent = {
       `${st.first_name} ${st.last_name} • ${st.class_name}`;
     document.getElementById("pr-coins").textContent = st.coins || 0;
 
+    const mbaho = st.monthly_baho;
+    const bahoBadge = mbaho ? `<span style="display:inline-block;background:${this.bahoCls(mbaho)};color:#fff;border-radius:8px;padding:0 10px;font-weight:900;margin-left:6px">${mbaho}</span>` : "";
     document.getElementById("parent-summary").innerHTML = `
       <div class="stat-tiles">
-        <div class="stat-tile"><div class="num">${st.monthly_pct != null ? st.monthly_pct + "%" : "—"}</div><div class="lbl">📅 Shu oy o'zlashtirish</div></div>
+        <div class="stat-tile"><div class="num">${st.monthly_pct != null ? st.monthly_pct + "%" : "—"} ${bahoBadge}</div><div class="lbl">📅 Shu oy o'zlashtirish (baho)</div></div>
         <div class="stat-tile"><div class="num">${st.tests_count || 0}</div><div class="lbl">Topshirgan testlar</div></div>
         <div class="stat-tile"><div class="num">🪙 ${st.coins || 0}</div><div class="lbl">Coinlar</div></div>
-        <div class="stat-tile"><div class="num">${(st.videos || 0) + (st.audios || 0) + (st.texts || 0)}</div><div class="lbl">Ko'rilgan darslar</div></div>
+        <div class="stat-tile"><div class="num">⏱ ${this.fmtDurLong(st.total_duration_seconds)}</div><div class="lbl">Bilim olishga sarflagan vaqt</div></div>
       </div>
-      <p class="muted" style="margin-bottom:14px">🎬 ${st.videos || 0} video • 🎧 ${st.audios || 0} audio • 📖 ${st.texts || 0} matn ko'rgan/o'qigan.</p>`;
+      <p class="muted" style="margin-bottom:14px">🎬 ${st.videos || 0} video • 🎧 ${st.audios || 0} audio • 📖 ${st.texts || 0} matn ko'rgan/o'qigan • 📅 shu oy: ${this.fmtDurLong(st.month_duration_seconds)}.</p>`;
 
     const tbox = document.getElementById("parent-tests");
     if (!res.tests.length) {
@@ -74,10 +85,11 @@ const Parent = {
       res.learning.forEach((a) => {
         const row = document.createElement("div");
         row.className = "act-row good";
+        const durTxt = a.duration_seconds > 0 ? ` • ⏱ ${this.fmtDur(a.duration_seconds)}` : "";
         row.innerHTML = `
           <div class="act-info">
             <div class="t">${icons[a.type] || ""} ${UI.esc(a.title)} <span class="muted">(${UI.esc(a.subject)})</span></div>
-            <div class="s">${UI.esc(a.completed_at || "")}</div>
+            <div class="s">${UI.esc(a.completed_at || "")}${durTxt}</div>
           </div>
           <div style="font-weight:800">🪙 +${a.coins}</div>`;
         lbox.appendChild(row);

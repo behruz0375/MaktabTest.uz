@@ -151,6 +151,11 @@ CREATE TABLE IF NOT EXISTS learning_activity (
     FOREIGN KEY(lesson_id) REFERENCES lessons(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_questions_test ON questions(test_id);
 CREATE INDEX IF NOT EXISTS idx_sub_test ON submissions(test_id);
 CREATE INDEX IF NOT EXISTS idx_sub_student ON submissions(student_id);
@@ -195,6 +200,10 @@ def init_db():
         _ensure_column(conn, "teachers", "assigned_classes", "TEXT DEFAULT ''")
         # Bilim olishda sarflangan vaqt (soniya)
         _ensure_column(conn, "learning_activity", "duration_seconds", "INTEGER DEFAULT 0")
+        # Testni kim yaratgani (o'qituvchi o'z testlarini ko'radi, zavuch hammasini)
+        _ensure_column(conn, "tests", "created_by", "INTEGER")
+        # Dars (bilim olish) — kim qo'shgani
+        _ensure_column(conn, "lessons", "created_by", "INTEGER")
         # Standart hisob (egasi/owner) yaratamiz (agar hech kim bo'lmasa)
         cur = conn.execute("SELECT COUNT(*) AS c FROM teachers")
         if cur.fetchone()["c"] == 0:
