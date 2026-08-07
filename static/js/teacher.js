@@ -945,7 +945,7 @@ const Teacher = {
           <span class="rank-score">Eng yaxshi: ${st.pct}% • ${this.fmtDur(st.dur)}${s.monthly_pct != null ? ` • 📅 bu oy: ${s.monthly_pct}%` : ""}</span>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${needsRetake}${pill}</div>`;
+      <div class="row-tail">${needsRetake}${pill}</div>`;
     row.onclick = () => this.showStudentDetail(s, rank);
     return row;
   },
@@ -1593,9 +1593,9 @@ const Teacher = {
     const res = await API.get("/api/teachers");
     const box = document.getElementById("teachers-list");
     if (!res.ok) { box.innerHTML = ""; return; }
-    // Rol tanlash faqat direktorда ko'rinadi (direktor zavuch/o'qituvchi qo'sha oladi)
+    // Rol tanlash boshqaruv/direktorда ko'rinadi (zavuch ham qo'sha oladi)
     const roleSel = document.getElementById("tch-role");
-    if (roleSel) roleSel.style.display = res.my_role === "director" ? "" : "none";
+    if (roleSel) roleSel.style.display = (res.my_role === "director" || res.my_role === "owner") ? "" : "none";
     box.innerHTML = "";
     res.teachers.forEach((t) => {
       const roleTag = `<span class="role-tag role-${t.role}">${UI.esc(t.role_label)}</span>`;
@@ -1613,8 +1613,10 @@ const Teacher = {
           <button class="btn btn-ghost btn-sm" data-classes="${t.id}" title="Sinflarni biriktirish">${acLabel}</button>
           <button class="btn btn-danger btn-sm" data-del="${t.id}">🗑️ O'chirish</button>`;
       } else if ((t.role === "zavuch" || t.role === "director") && myRole === "owner") {
-        // Boshqaruv zavuchning login/parolini joriy parolsiz yangilay oladi
-        actions = `<button class="btn btn-secondary btn-sm" data-creds="${t.id}">🔑 Login/parol o'zgartirish</button>`;
+        // Boshqaruv zavuchning login/parolini yangilaydi va zavuchni o'chira oladi
+        actions = `
+          <button class="btn btn-secondary btn-sm" data-creds="${t.id}">🔑 Login/parol</button>
+          <button class="btn btn-danger btn-sm" data-del="${t.id}">🗑️ O'chirish</button>`;
       }
       row.innerHTML = `
         <div class="pc-info"><b>${UI.esc(t.username)}</b> ${roleTag} ${suspTag} ${t.is_me ? '<span class="chip on">Siz</span>' : ""}</div>

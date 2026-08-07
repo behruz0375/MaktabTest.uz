@@ -200,6 +200,8 @@ def init_db():
         _ensure_column(conn, "teachers", "assigned_classes", "TEXT DEFAULT ''")
         # Bilim olishda sarflangan vaqt (soniya)
         _ensure_column(conn, "learning_activity", "duration_seconds", "INTEGER DEFAULT 0")
+        # Dars tugatilganmi (heartbeat orqali vaqt yozilsa ham, coin faqat tugatganda)
+        _ensure_column(conn, "learning_activity", "completed", "INTEGER DEFAULT 1")
         # Testni kim yaratgani (o'qituvchi o'z testlarini ko'radi, zavuch hammasini)
         _ensure_column(conn, "tests", "created_by", "INTEGER")
         # Dars (bilim olish) — kim qo'shgani

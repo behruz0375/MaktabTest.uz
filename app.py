@@ -1433,7 +1433,7 @@ def learning_enter():
         if student["blocked"]:
             return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
         lessons = conn.execute("SELECT * FROM lessons WHERE class_name = ? AND school_id = ? ORDER BY created_at DESC, id DESC", (class_name, school_id)).fetchall()
-        done = [r["lesson_id"] for r in conn.execute("SELECT DISTINCT lesson_id FROM learning_activity WHERE student_id = ?", (student["id"],)).fetchall()]
+        done = [r["lesson_id"] for r in conn.execute("SELECT DISTINCT lesson_id FROM learning_activity WHERE student_id = ? AND completed = 1", (student["id"],)).fetchall()]
         total_dur = conn.execute("SELECT COALESCE(SUM(duration_seconds),0) AS d FROM learning_activity WHERE student_id = ?", (student["id"],)).fetchone()["d"]
         ym = datetime.now().strftime("%Y-%m")
         month_dur = conn.execute("SELECT COALESCE(SUM(duration_seconds),0) AS d FROM learning_activity WHERE student_id = ? AND substr(completed_at,1,7) = ?", (student["id"], ym)).fetchone()["d"]
@@ -1445,6 +1445,42 @@ def learning_enter():
             "lessons": [_lesson_public(l, conn) for l in lessons],
             "completed": done,
         })
+    finally:
+        conn.close()
+
+
+@app.route("/api/learning/watch", methods=["POST"])
+def learning_watch():
+    """Heartbeat: o'quvchi video/audio ko'rayotganда sarflagan vaqtni (delta soniya) yozib boradi.
+    Dars tugatilmagan bo'lsa ham vaqt saqlanadi (coin faqat tugatganda beriladi)."""
+    data = request.get_json(force=True, silent=True) or {}
+    student_id = data.get("student_id")
+    lesson_id = data.get("lesson_id")
+    try:
+        seconds = int(data.get("seconds") or 0)
+    except (TypeError, ValueError):
+        seconds = 0
+    if seconds <= 0:
+        return jsonify({"ok": True, "skipped": True})
+    seconds = min(seconds, 3600)
+    conn = get_conn()
+    try:
+        l = conn.execute("SELECT * FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+        s = conn.execute("SELECT 1 FROM students WHERE id = ?", (student_id,)).fetchone()
+        if not l or not s:
+            return jsonify({"ok": False, "error": "Topilmadi"}), 404
+        existing = conn.execute("SELECT id FROM learning_activity WHERE student_id = ? AND lesson_id = ?", (student_id, lesson_id)).fetchone()
+        if existing:
+            conn.execute("UPDATE learning_activity SET duration_seconds = COALESCE(duration_seconds,0) + ? WHERE id = ?",
+                         (seconds, existing["id"]))
+        else:
+            conn.execute(
+                "INSERT INTO learning_activity (student_id, lesson_id, type, coins_awarded, duration_seconds, completed, completed_at) "
+                "VALUES (?, ?, ?, 0, ?, 0, ?)",
+                (student_id, lesson_id, l["type"], seconds, now_iso()),
+            )
+        conn.commit()
+        return jsonify({"ok": True})
     finally:
         conn.close()
 
@@ -1465,13 +1501,24 @@ def learning_complete():
         if not l or not s:
             return jsonify({"ok": False, "error": "Topilmadi"}), 404
         existing = conn.execute("SELECT * FROM learning_activity WHERE student_id = ? AND lesson_id = ?", (student_id, lesson_id)).fetchone()
-        if existing:
-            return jsonify({"ok": True, "already": True, "coins": 0, "total_coins": s["coins"] or 0})
         coins = l["coins_reward"] or 0
-        conn.execute(
-            "INSERT INTO learning_activity (student_id, lesson_id, type, coins_awarded, duration_seconds, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (student_id, lesson_id, l["type"], coins, duration_seconds, now_iso()),
-        )
+        if existing:
+            if existing["completed"]:
+                if duration_seconds > 0:
+                    conn.execute("UPDATE learning_activity SET duration_seconds = COALESCE(duration_seconds,0) + ? WHERE id = ?",
+                                 (duration_seconds, existing["id"]))
+                    conn.commit()
+                return jsonify({"ok": True, "already": True, "coins": 0, "total_coins": s["coins"] or 0})
+            # Heartbeat orqali boshlangan (tugatilmagan) — endi tugatildi, coin beriladi
+            conn.execute("UPDATE learning_activity SET completed = 1, coins_awarded = ?, "
+                         "duration_seconds = COALESCE(duration_seconds,0) + ?, completed_at = ? WHERE id = ?",
+                         (coins, duration_seconds, now_iso(), existing["id"]))
+        else:
+            conn.execute(
+                "INSERT INTO learning_activity (student_id, lesson_id, type, coins_awarded, duration_seconds, completed, completed_at) "
+                "VALUES (?, ?, ?, ?, ?, 1, ?)",
+                (student_id, lesson_id, l["type"], coins, duration_seconds, now_iso()),
+            )
         conn.execute("UPDATE students SET coins = COALESCE(coins,0) + ? WHERE id = ?", (coins, student_id))
         conn.commit()
         total = conn.execute("SELECT coins FROM students WHERE id = ?", (student_id,)).fetchone()["coins"]
@@ -1824,15 +1871,23 @@ def create_teacher():
         return jsonify({"ok": False, "error": "Login kiriting"}), 400
     if len(password) < 4:
         return jsonify({"ok": False, "error": "Parol kamida 4 ta belgi bo'lsin"}), 400
+    # Rol: boshqaruv (owner) va direktor zavuch ham qo'sha oladi; zavuch faqat o'qituvchi
+    req_role = norm(data.get("role")) or "teacher"
+    my_role = session.get("role")
+    if req_role == "zavuch" and my_role not in ("owner", "director"):
+        return jsonify({"ok": False, "error": "Zavuch qo'shishga faqat boshqaruv ruxsat etilgan"}), 403
+    if req_role not in ("teacher", "zavuch"):
+        req_role = "teacher"
+    is_admin = 1 if req_role == "zavuch" else 0
     conn = get_conn()
     try:
         if conn.execute("SELECT 1 FROM teachers WHERE username = ?", (username,)).fetchone():
             return jsonify({"ok": False, "error": "Bu login band"}), 400
         conn.execute("INSERT INTO teachers (username, password_hash, role, is_admin, school_id, created_at) "
-                     "VALUES (?, ?, 'teacher', 0, ?, ?)",
-                     (username, generate_password_hash(password), sid, now_iso()))
+                     "VALUES (?, ?, ?, ?, ?, ?)",
+                     (username, generate_password_hash(password), req_role, is_admin, sid, now_iso()))
         conn.commit()
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "role": req_role})
     finally:
         conn.close()
 
@@ -1850,8 +1905,17 @@ def delete_teacher(teacher_id):
             return jsonify({"ok": False, "error": "O'zingizni o'chira olmaysiz"}), 400
         if sid is not None and target["school_id"] != sid:
             return jsonify({"ok": False, "error": "Bu boshqa maktab hisobi"}), 403
-        if (target["role"] or "teacher") != "teacher":
-            return jsonify({"ok": False, "error": "Faqat o'qituvchini o'chira olasiz"}), 403
+        target_role = target["role"] or "teacher"
+        my_role = session.get("role")
+        # Boshqaruv (owner): o'qituvchi va zavuchni; zavuch: faqat o'qituvchini
+        if my_role == "owner":
+            can = target_role in ("teacher", "zavuch", "director")
+        elif my_role == "zavuch":
+            can = target_role == "teacher"
+        else:
+            can = False
+        if not can:
+            return jsonify({"ok": False, "error": "Bu hisobni o'chirishga ruxsatingiz yo'q"}), 403
         conn.execute("DELETE FROM teachers WHERE id = ?", (teacher_id,))
         conn.commit()
         return jsonify({"ok": True})

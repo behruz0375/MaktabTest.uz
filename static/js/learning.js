@@ -135,8 +135,28 @@ const Learning = {
     }
   },
 
+  /* Ko'rilgan vaqtni serverga yozib boradi (video/audio uchun) */
+  _startWatch(lessonId) {
+    this._watchUnflushed = 0;
+    this._watchLesson = lessonId;
+    this._stopWatchTimer();
+    this._watchTimer = setInterval(() => {
+      const m = document.getElementById("lesson-media");
+      if (m && !m.paused && !m.ended && m.currentTime > 0) {
+        this._watchUnflushed++;
+        if (this._watchUnflushed >= 15) this._flushWatch();
+      }
+    }, 1000);
+  },
+  async _flushWatch() {
+    const secs = this._watchUnflushed || 0;
+    if (secs <= 0 || !this._watchLesson || !this.student) return;
+    this._watchUnflushed = 0;
+    try { await API.post("/api/learning/watch", { student_id: this.student.id, lesson_id: this._watchLesson, seconds: secs }); } catch (e) {}
+  },
+  _stopWatchTimer() { if (this._watchTimer) { clearInterval(this._watchTimer); this._watchTimer = null; } },
+
   openMedia(l) {
-    this._lessonStartTime = Date.now();
     const isVideo = l.type === "video";
     const tag = isVideo ? "video" : "audio";
     UI.modal(`
@@ -154,8 +174,9 @@ const Learning = {
         </div>
         <p class="player-note">⚠️ Darsni oldinga o'tkazib yoki tezlashtirib bo'lmaydi. Faqat 10 soniya orqaga qaytarish mumkin.</p>
         <div id="pl-done-area"></div>
-      </div>`, { large: true, onClose: () => { this.stopMedia(); this.refreshLearning(); } });
+      </div>`, { large: true, onClose: () => { this._flushWatch(); this._stopWatchTimer(); this.stopMedia(); this.refreshLearning(); } });
 
+    this._startWatch(l.id);
     const media = document.getElementById("lesson-media");
     const spin = document.getElementById("media-spinner");
     const showSpin = () => spin && spin.classList.add("on");
@@ -226,8 +247,16 @@ const Learning = {
   },
 
   async showComplete(l) {
-    const duration_seconds = this._lessonStartTime ? Math.round((Date.now() - this._lessonStartTime) / 1000) : 0;
-    this._lessonStartTime = null;
+    let duration_seconds = 0;
+    if (l.type === "text") {
+      // Matn: o'qishga ketgan vaqt
+      duration_seconds = this._lessonStartTime ? Math.round((Date.now() - this._lessonStartTime) / 1000) : 0;
+      this._lessonStartTime = null;
+    } else {
+      // Video/audio: vaqt heartbeat orqali yozilgan — qolganini yuboramiz
+      await this._flushWatch();
+      this._stopWatchTimer();
+    }
     const res = await API.post("/api/learning/complete", { student_id: this.student.id, lesson_id: l.id, duration_seconds });
     let msg = "";
     if (res.ok) {
