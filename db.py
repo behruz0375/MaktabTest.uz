@@ -189,6 +189,12 @@ def init_db():
         _ensure_column(conn, "students", "school_id", "INTEGER")
         _ensure_column(conn, "tests", "school_id", "INTEGER")
         _ensure_column(conn, "lessons", "school_id", "INTEGER")
+        # Maktabni vaqtinchalik to'xtatish
+        _ensure_column(conn, "schools", "suspended", "INTEGER DEFAULT 0")
+        # O'qituvchiga biriktirilgan sinflar (vergul bilan ajratilgan, bo'sh = hammasi)
+        _ensure_column(conn, "teachers", "assigned_classes", "TEXT DEFAULT ''")
+        # Bilim olishda sarflangan vaqt (soniya)
+        _ensure_column(conn, "learning_activity", "duration_seconds", "INTEGER DEFAULT 0")
         # Standart hisob (egasi/owner) yaratamiz (agar hech kim bo'lmasa)
         cur = conn.execute("SELECT COUNT(*) AS c FROM teachers")
         if cur.fetchone()["c"] == 0:

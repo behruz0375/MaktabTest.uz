@@ -1170,3 +1170,16 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 .role-director { background: linear-gradient(135deg, #ffd93b, #ff9f1a); color: #4a2c00; }
 .role-zavuch { background: linear-gradient(135deg, #7c5cff, #ff5cae); color: #fff; }
 .role-teacher { background: var(--inp-bg); border: 1px solid var(--inp-border); color: var(--muted); }
+
+/* Import namuna jadvali */
+.imp-preview-table { border-collapse: collapse; font-size: .82rem; min-width: 500px; }
+.imp-preview-table th, .imp-preview-table td { border: 1px solid var(--card-border); padding: 5px 12px; }
+.imp-preview-table th { background: var(--inp-bg); font-weight: 700; }
+.imp-preview-table tr:nth-child(even) { background: var(--bg-2); }
+
+/* To'xtatilgan maktab kartasi */
+.test-card.sch-suspended { opacity: .65; border-color: var(--danger-1); }
+
+/* Checkbox label */
+.chk-label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.chk-label input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }

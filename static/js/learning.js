@@ -122,6 +122,7 @@ const Learning = {
   },
 
   openMedia(l) {
+    this._lessonStartTime = Date.now();
     const isVideo = l.type === "video";
     const tag = isVideo ? "video" : "audio";
     UI.modal(`
@@ -196,6 +197,7 @@ const Learning = {
     };
     document.getElementById("reader-back").onclick = () => this._closeReader();
 
+    this._lessonStartTime = Date.now();
     const btn = document.getElementById("txt-done");
     let sec = 6;
     btn.textContent = `Iltimos o'qing... (${sec}s)`;
@@ -210,7 +212,9 @@ const Learning = {
   },
 
   async showComplete(l) {
-    const res = await API.post("/api/learning/complete", { student_id: this.student.id, lesson_id: l.id });
+    const duration_seconds = this._lessonStartTime ? Math.round((Date.now() - this._lessonStartTime) / 1000) : 0;
+    this._lessonStartTime = null;
+    const res = await API.post("/api/learning/complete", { student_id: this.student.id, lesson_id: l.id, duration_seconds });
     let msg = "";
     if (res.ok) {
       this.completed.add(l.id);

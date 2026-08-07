@@ -265,7 +265,17 @@
         <!-- Fayldan import -->
         <div class="card" id="import-card">
           <h3 style="margin-bottom:8px">📄 Fayldan test yuklash (Excel / CSV / Word / PDF)</h3>
-          <p class="muted" style="margin-bottom:12px">Tayyor fayldan savollarni yuklang. <a href="#" id="imp-template" style="color:var(--primary-2);font-weight:700">📥 Namuna faylni yuklab oling</a> — shu ustunlarда to'ldiring: Savol | A | B | C | D | To'g'ri javob.</p>
+          <p class="muted" style="margin-bottom:8px">Tayyor fayldan savollarni yuklang. <a href="#" id="imp-template" style="color:var(--primary-2);font-weight:700">📥 Namuna faylni yuklab oling</a> — quyidagi formatda to'ldiring:</p>
+          <div style="overflow-x:auto;margin-bottom:12px">
+            <table class="imp-preview-table">
+              <thead><tr><th>Savol</th><th>A</th><th>B</th><th>C</th><th>D</th><th style="color:#23c483">To'g'ri javob</th></tr></thead>
+              <tbody>
+                <tr><td>2 + 2 = ?</td><td>3</td><td>4</td><td>5</td><td>6</td><td style="color:#23c483;font-weight:700">B</td></tr>
+                <tr><td>O'zbekiston poytaxti?</td><td>Samarqand</td><td>Toshkent</td><td>Buxoro</td><td>Xiva</td><td style="color:#23c483;font-weight:700">B</td></tr>
+                <tr><td>Suv formulasi?</td><td>CO2</td><td>O2</td><td>H2O</td><td>NaCl</td><td style="color:#23c483;font-weight:700">C</td></tr>
+              </tbody>
+            </table>
+          </div>
           <div class="grid-4">
             <div class="field-row"><label>Test nomi</label><input id="imp-title" class="inp" placeholder="Masalan: Import test"></div>
             <div class="field-row"><label>Fan</label><select id="imp-subject" class="inp"></select></div>
@@ -447,11 +457,19 @@
           <h2>🎓 Mutolaa natijalari — coin va faollik</h2>
         </div>
         <div class="card">
-          <div class="field-row">
-            <label>Sinfni tanlang</label>
-            <select id="lrn-class" class="inp">
-              <option value="" disabled selected>— Sinf —</option>
-            </select>
+          <div class="grid-4">
+            <div class="field-row">
+              <label>Sinfni tanlang</label>
+              <select id="lrn-class" class="inp">
+                <option value="" disabled selected>— Sinf —</option>
+              </select>
+            </div>
+            <div class="field-row">
+              <label>Fan bo'yicha filtr</label>
+              <select id="lrn-subject" class="inp">
+                <option value="">Barcha fanlar</option>
+              </select>
+            </div>
           </div>
           <div id="lrn-class-buttons" class="class-btn-grid"></div>
         </div>

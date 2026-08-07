@@ -112,6 +112,9 @@ const UI = {
       this.fillSelect(document.getElementById("imp-subject"), m.subjects, "Fanni tanlang");
       this.fillSelect(document.getElementById("imp-class"), m.classes, "Sinfni tanlang");
       this.fillSelect(document.getElementById("par-class"), m.classes, "— Sinf —");
+      // Mutolaa natijalari fan filtri
+      const ls = document.getElementById("lrn-subject");
+      if (ls) { ls.innerHTML = '<option value="">Barcha fanlar</option>'; m.subjects.forEach((s) => { const o = document.createElement("option"); o.value = s; o.textContent = s; ls.appendChild(o); }); }
     }
   },
   fillSelect(sel, items, placeholder) {

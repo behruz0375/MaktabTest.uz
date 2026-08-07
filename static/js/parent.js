@@ -20,6 +20,9 @@ const Parent = {
     UI.showView("view-parent");
   },
 
+  bahoOf(pct) { return pct >= 87 ? 5 : pct >= 71 ? 4 : pct >= 55 ? 3 : 2; },
+  bahoCls(b) { return b >= 5 ? "#23c483" : b >= 4 ? "#3ca6ff" : b >= 3 ? "#f8a928" : "#e94b4b"; },
+
   render(res) {
     const st = res.student;
     document.getElementById("pr-student").textContent =
@@ -42,6 +45,8 @@ const Parent = {
       tbox.innerHTML = "";
       res.tests.forEach((t) => {
         const bad = t.status === "terminated";
+        const baho = bad ? null : this.bahoOf(t.percentage);
+        const bahoBadge = baho ? `<span style="display:inline-block;background:${this.bahoCls(baho)};color:#fff;border-radius:8px;padding:2px 10px;font-weight:900;font-size:1.15rem">${baho}</span>` : "";
         const row = document.createElement("div");
         row.className = "act-row " + (bad ? "bad" : "good");
         row.innerHTML = `
@@ -49,7 +54,8 @@ const Parent = {
             <div class="t">${UI.esc(t.test_title)} <span class="muted">(${UI.esc(t.subject)})</span></div>
             <div class="s">${UI.esc(t.submitted_at || "")} • ${this.fmtDur(t.duration_seconds)}</div>
           </div>
-          <div style="text-align:right">
+          <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+            ${bahoBadge}
             <div style="font-weight:800">${t.score}/${t.total} • ${t.percentage}%</div>
             <div class="s" style="color:${bad ? "var(--danger-1)" : "var(--success-1)"}">
               ${bad ? "⚠️ " + UI.esc(t.violation_reason || "Xavfsizlik buzilgan") : "✔ Xavfsiz topshirdi"}
