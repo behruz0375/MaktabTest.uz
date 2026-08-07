@@ -41,6 +41,14 @@ const Teacher = {
     document.getElementById("tch-add").onclick = () => this.addTeacher();
     // Statistika
     document.getElementById("stats-refresh").onclick = () => this.loadStats();
+    // Telefon burger menyu
+    const burger = document.getElementById("burger");
+    const overlay = document.getElementById("sidebar-overlay");
+    const sidebar = document.querySelector("#view-teacher .sidebar");
+    const closeDrawer = () => { sidebar.classList.remove("open"); overlay.classList.remove("on"); };
+    burger.onclick = () => { sidebar.classList.toggle("open"); overlay.classList.toggle("on"); };
+    overlay.onclick = closeDrawer;
+    document.querySelectorAll("#view-teacher .side-btn").forEach((b) => b.addEventListener("click", closeDrawer));
     // Maktablar (owner)
     document.getElementById("sch-add").onclick = () => this.addSchool();
     document.getElementById("school-exit").onclick = () => this.exitSchool();
@@ -110,7 +118,26 @@ const Teacher = {
     if (isOwner && !this.viewSchool) this.showSection("schools", false);
     else this.showSection("stats", false);
     UI.showView("view-teacher");
+    this.startNotifPoll();
   },
+
+  startNotifPoll() {
+    this.stopNotifPoll();
+    const tick = async () => {
+      const liveBtn = document.querySelector('.side-btn[data-section="live"]');
+      const badge = document.getElementById("badge-live");
+      if (!badge) return;
+      if (!liveBtn || liveBtn.style.display === "none") { badge.classList.remove("on"); return; }
+      const res = await API.get("/api/live");
+      if (res.ok) {
+        if (res.count > 0) { badge.textContent = res.count > 99 ? "99+" : res.count; badge.classList.add("on"); }
+        else badge.classList.remove("on");
+      }
+    };
+    tick();
+    this._notifPoll = setInterval(tick, 12000);
+  },
+  stopNotifPoll() { if (this._notifPoll) { clearInterval(this._notifPoll); this._notifPoll = null; } },
 
   applyRoleUI() {
     const t = State.teacher || {};
@@ -333,8 +360,17 @@ const Teacher = {
         <div class="live-timer">
           <span class="timer-label">Qolgan vaqt</span>
           <span class="live-time" id="live-time-${i}">${this.fmtClock(a.remaining_seconds)}</span>
-        </div>`;
+        </div>
+        <button class="btn btn-danger btn-sm" data-stop-sub="${a.sub_id}">⏹️ To'xtatish</button>`;
+      row.querySelector("[data-stop-sub]").onclick = () => this.stopSubmission(a.sub_id, a);
       box.appendChild(row);
+    });
+  },
+  stopSubmission(subId, a) {
+    this.confirm("O'quvchini to'xtatish", `${a.last_name} ${a.first_name} ning testi hozir to'xtatiladi.`, async () => {
+      const res = await API.post(`/api/submissions/${subId}/stop`);
+      if (res.ok) { UI.toast("O'quvchi to'xtatildi", "ok"); this.loadLive(); }
+      else UI.toast(res.error || "Xatolik", "err");
     });
   },
 
@@ -348,6 +384,7 @@ const Teacher = {
 
   async logout() {
     this.stopLive();
+    this.stopNotifPoll();
     this.viewSchool = null;
     await API.post("/api/teacher/logout");
     State.teacher = null;
@@ -1136,15 +1173,43 @@ const Teacher = {
     box.innerHTML = "";
     res.teachers.forEach((t) => {
       const roleTag = `<span class="role-tag role-${t.role}">${UI.esc(t.role_label)}</span>`;
+      const suspTag = t.suspended ? '<span class="chip off">⏸️ to\'xtatilgan</span>' : "";
       const row = document.createElement("div");
       row.className = "parent-cred";
+      let actions = "";
+      if (t.is_me) actions = '<span class="muted">(joriy hisob)</span>';
+      else if (t.role === "teacher") actions = `
+        <button class="btn btn-secondary btn-sm" data-pass="${t.id}">🔑 Parol</button>
+        <button class="btn btn-ghost btn-sm" data-susp="${t.id}">${t.suspended ? "▶️ Faollashtirish" : "⏸️ To'xtatish"}</button>
+        <button class="btn btn-danger btn-sm" data-del="${t.id}">🗑️ O'chirish</button>`;
       row.innerHTML = `
-        <div class="pc-info"><b>${UI.esc(t.username)}</b> ${roleTag} ${t.is_me ? '<span class="chip on">Siz</span>' : ""}</div>
-        ${t.is_me ? '<span class="muted">(joriy hisob)</span>' : `<button class="btn btn-danger btn-sm" data-del="${t.id}">🗑️ O'chirish</button>`}`;
-      const db = row.querySelector("[data-del]");
-      if (db) db.onclick = () => this.deleteTeacher(t.id, t.username);
+        <div class="pc-info"><b>${UI.esc(t.username)}</b> ${roleTag} ${suspTag} ${t.is_me ? '<span class="chip on">Siz</span>' : ""}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${actions}</div>`;
+      const del = row.querySelector("[data-del]"); if (del) del.onclick = () => this.deleteTeacher(t.id, t.username);
+      const pass = row.querySelector("[data-pass]"); if (pass) pass.onclick = () => this.resetTeacherPassword(t);
+      const susp = row.querySelector("[data-susp]"); if (susp) susp.onclick = () => this.suspendTeacher(t);
       box.appendChild(row);
     });
+  },
+
+  resetTeacherPassword(t) {
+    UI.modal(`
+      <span class="modal-icon">🔑</span>
+      <h2 style="text-align:center">${UI.esc(t.username)} — yangi parol</h2>
+      <div class="field-row"><label>Yangi parol</label><input id="tpass-new" class="inp" type="text" placeholder="Kamida 4 ta belgi"></div>
+      <div style="text-align:center"><button class="btn btn-success" id="tpass-save">Saqlash</button></div>`);
+    document.getElementById("tpass-save").onclick = async () => {
+      const p = document.getElementById("tpass-new").value;
+      if (p.length < 4) return UI.toast("Parol kamida 4 ta belgi bo'lsin", "err");
+      const res = await API.post(`/api/teachers/${t.id}/password`, { password: p });
+      if (res.ok) { UI.closeModal(); UI.toast("Parol yangilandi ✔", "ok"); }
+      else UI.toast(res.error || "Xatolik", "err");
+    };
+  },
+  async suspendTeacher(t) {
+    const res = await API.post(`/api/teachers/${t.id}/suspend`);
+    if (res.ok) { UI.toast(res.suspended ? "O'qituvchi to'xtatildi" : "O'qituvchi faollashtirildi", "ok"); this.loadTeachers(); }
+    else UI.toast(res.error || "Xatolik", "err");
   },
 
   async addTeacher() {

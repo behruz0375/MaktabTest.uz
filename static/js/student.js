@@ -59,16 +59,20 @@ const Student = {
   stopStatusPoll() {
     if (this._statusPoll) { clearInterval(this._statusPoll); this._statusPoll = null; }
   },
-  async teacherStopped() {
+  teacherStopped() {
     const ex = State.exam;
     if (!ex || !ex.active) return;
     ex.active = false; ex.finished = true;
     this.stopTimer(); this.stopStatusPoll(); this.disableAntiCheat();
-    // Saqlangan natijani olamiz
-    const res = await API.post("/api/student/submit", { submission_id: ex.submissionId, token: ex.token, answers: ex.answers });
-    UI.toast("Test o'qituvchi tomonidan to'xtatildi", "warn", 4000);
-    if (res.ok) this.showResult(res.result);
-    else { this.reset(); UI.showView("view-login"); }
+    UI.modal(`
+      <span class="modal-icon">⏸️</span>
+      <h2 style="text-align:center;color:var(--danger-1)">Test to'xtatildi</h2>
+      <p style="text-align:center">Siz <b>o'qituvchi tomonidan</b> to'xtatildingiz.<br>Iltimos kuting yoki ustozingizga murojaat qiling.</p>
+      <div style="text-align:center;margin-top:18px">
+        <button class="btn btn-primary" id="stopped-home">Bosh sahifaga qaytish</button>
+      </div>
+    `, { closable: false });
+    document.getElementById("stopped-home").onclick = () => { UI.closeModal(); this.reset(); UI.showView("view-login"); };
   },
 
   renderQuestion(i) {

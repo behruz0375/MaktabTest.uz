@@ -197,6 +197,8 @@
 
   <!-- ================= O'QITUVCHI PANEL ================= -->
   <div id="view-teacher" class="view">
+    <button id="burger" class="burger" aria-label="Menyu">☰</button>
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
     <aside class="sidebar">
       <div class="sidebar-brand">📚 <span>O'qituvchi paneli</span></div>
       <nav class="side-nav">
@@ -206,7 +208,7 @@
         <button class="side-btn" data-section="tests">📋 <span>Testlarim</span></button>
         <button class="side-btn" data-section="lessons">📚 <span>Darslar (bilim olish)</span></button>
         <button class="side-btn" data-section="results">📊 <span>Natijalar va xavfsizlik</span></button>
-        <button class="side-btn" data-section="live">🟢 <span>Jonli kuzatuv</span></button>
+        <button class="side-btn" data-section="live">🟢 <span>Jonli kuzatuv</span><span class="side-badge" id="badge-live"></span></button>
         <button class="side-btn" data-section="learning">🎓 <span>Mutolaa natijalari</span></button>
         <button class="side-btn" data-section="students">👥 <span>O'quvchilar ro'yxati</span></button>
         <button class="side-btn" data-section="parents">👪 <span>Ota-onalar (login)</span></button>

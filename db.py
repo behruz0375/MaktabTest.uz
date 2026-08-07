@@ -182,6 +182,8 @@ def init_db():
         _ensure_column(conn, "teachers", "role", "TEXT DEFAULT 'teacher'")
         # O'quvchini bloklash imkoniyati
         _ensure_column(conn, "students", "blocked", "INTEGER DEFAULT 0")
+        # O'qituvchini vaqtinchalik to'xtatish (suspend)
+        _ensure_column(conn, "teachers", "suspended", "INTEGER DEFAULT 0")
         # Ko'p maktab (multi-tenancy): har jadvalga school_id
         _ensure_column(conn, "teachers", "school_id", "INTEGER")
         _ensure_column(conn, "students", "school_id", "INTEGER")
