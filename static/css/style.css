@@ -900,7 +900,7 @@ select option,
 
 /* ===== TELEFON: umumiy ===== */
 @media (max-width: 720px) {
-  .panel-main { padding: 16px 14px; }
+  .panel-main { padding: 68px 14px 16px; }
   .opt-grid { grid-template-columns: 1fr; }
   .modal-info-grid { grid-template-columns: 1fr 1fr; }
   .grid-4 { grid-template-columns: 1fr; }

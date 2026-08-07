@@ -25,10 +25,24 @@ const Learning = {
     document.getElementById("lr-student").textContent =
       `${payload.student.first_name} ${payload.student.last_name} • ${payload.student.class_name}${payload.school_name ? " • 🏫 " + payload.school_name : ""}`;
     document.getElementById("lr-coins").textContent = payload.student.coins || 0;
+    this._updateTimeBadge(payload.student.total_duration_seconds || 0);
     this.currentSubject = null;
     this.renderSubjects();
     Games.renderGrid(document.getElementById("games-grid"));
     UI.showView("view-learning");
+  },
+
+  _fmtDur(sec) {
+    sec = Math.round(sec || 0);
+    if (sec < 60) return sec + " s";
+    const m = Math.floor(sec / 60), s = sec % 60;
+    if (m < 60) return m + " daq" + (s ? " " + s + "s" : "");
+    const h = Math.floor(m / 60), rm = m % 60;
+    return h + " soat" + (rm ? " " + rm + " daq" : "");
+  },
+  _updateTimeBadge(sec) {
+    const el = document.getElementById("lr-time");
+    if (el) el.textContent = this._fmtDur(sec);
   },
 
   /* Avval FANLAR ro'yxati */
@@ -223,6 +237,7 @@ const Learning = {
         msg = `🪙 +${res.coins} coin!`;
         this.student.coins = res.total_coins;
         document.getElementById("lr-coins").textContent = res.total_coins;
+        if (res.total_duration_seconds != null) this._updateTimeBadge(res.total_duration_seconds);
         Fireworks.start(2500);
       }
     }

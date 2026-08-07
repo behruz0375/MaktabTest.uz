@@ -150,6 +150,7 @@
         <span class="test-title" id="lr-student"></span>
       </div>
       <div class="learn-top-right">
+        <span class="coin-badge" id="lr-time-badge" title="Bilim olishga sarflagan vaqtingiz">⏱ <b id="lr-time">0 s</b></span>
         <span class="coin-badge">🪙 <b id="lr-coins">0</b> coin</span>
         <button id="lr-exit" class="btn btn-ghost btn-sm">🚪 Chiqish</button>
       </div>
@@ -560,6 +561,12 @@
             <input id="set-pass" class="inp" type="password" placeholder="Yangi parol (kamida 4 ta belgi)">
           </div>
           <button id="set-save" class="btn btn-success">💾 Saqlash</button>
+        </div>
+
+        <div class="card card-narrow" id="clear-data-box" style="display:none;border:1px solid var(--danger-1)">
+          <h3 style="margin-bottom:6px;color:var(--danger-1)">🧹 Maktab ma'lumotlarini tozalash</h3>
+          <p class="muted">Faqat <b>testlar</b>, <b>savollar</b> va <b>natijalar</b> o'chiriladi. O'quvchilar, o'qituvchilar, ota-ona loginlari, darslar va coinlar saqlanadi.</p>
+          <button id="clear-data-btn" class="btn btn-danger">🧹 Testlar va natijalarni tozalash</button>
         </div>
       </section>
     </main>

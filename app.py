@@ -218,6 +218,7 @@ def teacher_login():
     data = request.get_json(force=True, silent=True) or {}
     username = norm(data.get("username"))
     password = data.get("password") or ""
+    expected = norm(data.get("expected_role"))  # kirish oynasi: teacher | zavuch | owner
     conn = get_conn()
     try:
         r = conn.execute("SELECT * FROM teachers WHERE username = ?", (username,)).fetchone()
@@ -226,6 +227,13 @@ def teacher_login():
         if r["suspended"]:
             return jsonify({"ok": False, "error": "Hisobingiz vaqtinchalik to'xtatilgan. Zavuch/boshqaruv bilan bog'laning."}), 403
         role = r["role"] or ("director" if r["is_admin"] else "teacher")
+        # Har bir rol o'z kirish oynasidan kirsin (owner zavuch oynasidan kira olmasin va aksincha)
+        if expected:
+            allowed_map = {"owner": {"owner"}, "zavuch": {"zavuch", "director"}, "teacher": {"teacher"}}
+            allowed_roles = allowed_map.get(expected)
+            if allowed_roles and role not in allowed_roles:
+                where = {"owner": "👑 Boshqaruv", "zavuch": "🏫 Zavuch", "teacher": "🧑‍🏫 O'qituvchi"}.get(role, "kerakli")
+                return jsonify({"ok": False, "error": f"Bu hisob '{where}' bo'limiga tegishli. O'sha bo'limdan kiring."}), 403
         school_id = r["school_id"]
         school_name = None
         if school_id:
@@ -753,10 +761,38 @@ def live_monitor():
                 "sub_id": r["sub_id"],
                 "first_name": r["first_name"], "last_name": r["last_name"], "class_name": r["class_name"],
                 "test_title": r["title"], "subject": r["subject"], "code": r["code"],
-                "started_at": r["started_at"], "remaining_seconds": remaining,
+                "started_at": r["started_at"],
+                "started_clock": (r["started_at"] or "")[11:16],
+                "remaining_seconds": remaining,
                 "duration_minutes": r["duration_minutes"], "answered": answered, "q_total": r["q_total"],
+                "state": "active",
             })
-        return jsonify({"ok": True, "active": out, "count": len(out), "classes": all_classes})
+        # So'nggi 5 daqiqada test vaqtida chiqib ketgan (chetlashtirilgan) o'quvchilar
+        left = []
+        lrows = conn.execute(
+            "SELECT sub.id AS sub_id, sub.started_at, sub.submitted_at, sub.violation_reason, sub.correct_count, sub.total, "
+            "s.first_name, s.last_name, s.class_name, t.title, t.subject, t.code "
+            "FROM submissions sub JOIN students s ON s.id = sub.student_id JOIN tests t ON t.id = sub.test_id "
+            "WHERE sub.status = 'terminated'" + school_clause("t")[0] + " ORDER BY sub.submitted_at DESC LIMIT 30",
+            school_clause("t")[1],
+        ).fetchall()
+        for r in lrows:
+            try:
+                fin = datetime.strptime(r["submitted_at"], "%Y-%m-%d %H:%M:%S")
+                if (now - fin).total_seconds() > 300:
+                    continue
+            except Exception:
+                continue
+            if class_filter and r["class_name"] != class_filter:
+                continue
+            left.append({
+                "sub_id": r["sub_id"], "first_name": r["first_name"], "last_name": r["last_name"],
+                "class_name": r["class_name"], "test_title": r["title"], "subject": r["subject"], "code": r["code"],
+                "started_clock": (r["started_at"] or "")[11:16], "left_clock": (r["submitted_at"] or "")[11:16],
+                "reason": r["violation_reason"] or "Chiqib ketdi",
+                "answered": r["correct_count"], "q_total": r["total"], "state": "left",
+            })
+        return jsonify({"ok": True, "active": out, "count": len(out), "left": left, "classes": all_classes})
     finally:
         conn.close()
 
@@ -1030,13 +1066,21 @@ def student_violation():
 
 @app.route("/api/student/status", methods=["POST"])
 def student_status():
-    """O'quvchi test holatini tekshiradi (o'qituvchi to'xtatдими)."""
+    """O'quvchi test holatini tekshiradi (o'qituvchi to'xtatдими) va joriy javoblarni saqlaydi.
+    Shu tufayli jonli kuzatuvда o'quvchi nechta savolni belgilagani real vaqtда ko'rinadi."""
     data = request.get_json(force=True, silent=True) or {}
     conn = get_conn()
     try:
-        sub = conn.execute("SELECT status FROM submissions WHERE id = ? AND token = ?",
+        sub = conn.execute("SELECT * FROM submissions WHERE id = ? AND token = ?",
                            (data.get("submission_id"), data.get("token") or "")).fetchone()
-        return jsonify({"ok": True, "status": sub["status"] if sub else "unknown"})
+        if not sub:
+            return jsonify({"ok": True, "status": "unknown"})
+        # Joriy javoblarni (baholamasдан) saqlaymiz — faqat test davom etayotganда
+        if sub["status"] == "in_progress" and isinstance(data.get("answers"), dict):
+            answers = {str(k): str(v).strip().upper() for k, v in data["answers"].items() if v}
+            conn.execute("UPDATE submissions SET answers_json = ? WHERE id = ?", (json.dumps(answers), sub["id"]))
+            conn.commit()
+        return jsonify({"ok": True, "status": sub["status"]})
     finally:
         conn.close()
 
@@ -1243,10 +1287,14 @@ def learning_enter():
             return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
         lessons = conn.execute("SELECT * FROM lessons WHERE class_name = ? AND school_id = ? ORDER BY created_at DESC, id DESC", (class_name, school_id)).fetchall()
         done = [r["lesson_id"] for r in conn.execute("SELECT DISTINCT lesson_id FROM learning_activity WHERE student_id = ?", (student["id"],)).fetchall()]
+        total_dur = conn.execute("SELECT COALESCE(SUM(duration_seconds),0) AS d FROM learning_activity WHERE student_id = ?", (student["id"],)).fetchone()["d"]
+        ym = datetime.now().strftime("%Y-%m")
+        month_dur = conn.execute("SELECT COALESCE(SUM(duration_seconds),0) AS d FROM learning_activity WHERE student_id = ? AND substr(completed_at,1,7) = ?", (student["id"], ym)).fetchone()["d"]
         return jsonify({
             "ok": True,
             "student": {"id": student["id"], "first_name": student["first_name"], "last_name": student["last_name"],
-                        "class_name": student["class_name"], "coins": student["coins"] or 0},
+                        "class_name": student["class_name"], "coins": student["coins"] or 0,
+                        "total_duration_seconds": total_dur, "month_duration_seconds": month_dur},
             "lessons": [_lesson_public(l, conn) for l in lessons],
             "completed": done,
         })
@@ -1280,7 +1328,8 @@ def learning_complete():
         conn.execute("UPDATE students SET coins = COALESCE(coins,0) + ? WHERE id = ?", (coins, student_id))
         conn.commit()
         total = conn.execute("SELECT coins FROM students WHERE id = ?", (student_id,)).fetchone()["coins"]
-        return jsonify({"ok": True, "already": False, "coins": coins, "total_coins": total})
+        total_dur = conn.execute("SELECT COALESCE(SUM(duration_seconds),0) AS d FROM learning_activity WHERE student_id = ?", (student_id,)).fetchone()["d"]
+        return jsonify({"ok": True, "already": False, "coins": coins, "total_coins": total, "total_duration_seconds": total_dur})
     finally:
         conn.close()
 
@@ -1352,14 +1401,74 @@ def learning_results():
                 counts[a["type"]] = a["c"]
                 durations[a["type"]] = a["dur"]
             total_dur = durations["video"] + durations["audio"] + durations["text"]
+            # Shu oydagi sarflangan vaqt
+            ym = datetime.now().strftime("%Y-%m")
+            if subject:
+                month_dur = conn.execute(
+                    "SELECT COALESCE(SUM(la.duration_seconds),0) AS d FROM learning_activity la "
+                    "JOIN lessons l ON l.id = la.lesson_id "
+                    "WHERE la.student_id = ? AND l.subject = ? AND substr(la.completed_at,1,7) = ?",
+                    (s["id"], subject, ym),
+                ).fetchone()["d"]
+            else:
+                month_dur = conn.execute(
+                    "SELECT COALESCE(SUM(duration_seconds),0) AS d FROM learning_activity "
+                    "WHERE student_id = ? AND substr(completed_at,1,7) = ?",
+                    (s["id"], ym),
+                ).fetchone()["d"]
             out.append({
                 "id": s["id"], "first_name": s["first_name"], "last_name": s["last_name"],
                 "coins": s["coins"] or 0, "videos": counts["video"], "audios": counts["audio"],
                 "texts": counts["text"], "total": counts["video"] + counts["audio"] + counts["text"],
-                "total_duration_seconds": total_dur,
+                "total_duration_seconds": total_dur, "month_duration_seconds": month_dur,
             })
         out.sort(key=lambda x: -x["coins"])
         return jsonify({"ok": True, "class_name": class_name, "subject": subject, "students": out})
+    finally:
+        conn.close()
+
+
+@app.route("/api/learning/student/<int:student_id>", methods=["GET"])
+@teacher_required
+def learning_student_detail(student_id):
+    """Bitta o'quvchining bilim olish tafsiloti: darslar ro'yxati, vaqt, sana, oylik vaqt."""
+    conn = get_conn()
+    try:
+        s = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+        if not s:
+            return jsonify({"ok": False, "error": "O'quvchi topilmadi"}), 404
+        role = session.get("role", "teacher")
+        if role == "teacher":
+            allowed = get_teacher_classes(conn, session["teacher_id"])
+            if allowed and s["class_name"] not in allowed:
+                return jsonify({"ok": False, "error": "Sizga bu sinf biriktirilmagan"}), 403
+        acts = conn.execute(
+            "SELECT la.type, la.coins_awarded, la.duration_seconds, la.completed_at, l.title, l.subject "
+            "FROM learning_activity la JOIN lessons l ON l.id = la.lesson_id "
+            "WHERE la.student_id = ? ORDER BY la.completed_at DESC", (student_id,)
+        ).fetchall()
+        ym = datetime.now().strftime("%Y-%m")
+        items = []
+        total_dur = 0
+        month_dur = 0
+        for a in acts:
+            dur = a["duration_seconds"] or 0
+            total_dur += dur
+            if (a["completed_at"] or "")[:7] == ym:
+                month_dur += dur
+            items.append({
+                "title": a["title"], "subject": a["subject"], "type": a["type"],
+                "coins": a["coins_awarded"] or 0, "duration_seconds": dur,
+                "completed_at": a["completed_at"],
+            })
+        return jsonify({
+            "ok": True,
+            "student": {"id": s["id"], "first_name": s["first_name"], "last_name": s["last_name"],
+                        "class_name": s["class_name"], "coins": s["coins"] or 0},
+            "items": items,
+            "total_duration_seconds": total_dur,
+            "month_duration_seconds": month_dur,
+        })
     finally:
         conn.close()
 
@@ -1663,6 +1772,32 @@ def suspend_teacher(teacher_id):
         conn.close()
 
 
+@app.route("/api/school/clear-data", methods=["POST"])
+@role_required("owner", "zavuch")
+def clear_school_data():
+    """Maktabning testlari, savollari va natijalarini tozalaydi.
+    O'quvchilar, o'qituvchilar, ota-ona loginlari, darslar va coinlar TEGILMAYDI."""
+    sid = scope_school_id()
+    if sid is None:
+        return jsonify({"ok": False, "error": "Avval maktabga kiring"}), 400
+    conn = get_conn()
+    try:
+        n_tests = conn.execute("SELECT COUNT(*) AS c FROM tests WHERE school_id = ?", (sid,)).fetchone()["c"]
+        n_subs = conn.execute(
+            "SELECT COUNT(*) AS c FROM submissions WHERE test_id IN (SELECT id FROM tests WHERE school_id = ?)", (sid,)
+        ).fetchone()["c"]
+        conn.execute("DELETE FROM retake_grants WHERE test_id IN (SELECT id FROM tests WHERE school_id = ?)", (sid,))
+        conn.execute("DELETE FROM submissions WHERE test_id IN (SELECT id FROM tests WHERE school_id = ?)", (sid,))
+        conn.execute("DELETE FROM questions WHERE test_id IN (SELECT id FROM tests WHERE school_id = ?)", (sid,))
+        # Darsga biriktirilgan testlar bog'lanishini uzamiz (darslar o'chmasin)
+        conn.execute("UPDATE lessons SET related_test_id = NULL WHERE school_id = ?", (sid,))
+        conn.execute("DELETE FROM tests WHERE school_id = ?", (sid,))
+        conn.commit()
+        return jsonify({"ok": True, "tests_deleted": n_tests, "submissions_deleted": n_subs})
+    finally:
+        conn.close()
+
+
 # --------------------------------------------------------------------------
 # OTA-ONALAR ro'yxati (login/parollarni ko'rsatish)
 # --------------------------------------------------------------------------
@@ -1791,6 +1926,43 @@ def add_questions_to_test(test_id):
         conn.close()
 
 
+@app.route("/api/tests/<int:test_id>/import-questions", methods=["POST"])
+@teacher_required
+def import_questions_to_test(test_id):
+    """Mavjud testga fayldan (Excel/CSV/Word/PDF) savollar qo'shadi (almashtirmaydi)."""
+    import test_import
+    conn = get_conn()
+    try:
+        t = conn.execute("SELECT * FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not t:
+            return jsonify({"ok": False, "error": "Test topilmadi"}), 404
+        sid = scope_school_id()
+        if sid is not None and t["school_id"] != sid:
+            return jsonify({"ok": False, "error": "Bu test boshqa maktabniki"}), 403
+        f = request.files.get("file")
+        if not f or not f.filename:
+            return jsonify({"ok": False, "error": "Fayl tanlang"}), 400
+        data = f.read()
+        try:
+            questions = test_import.parse_file(f.filename, data)
+        except Exception as e:
+            return jsonify({"ok": False, "error": "Faylni o'qib bo'lmadi: " + str(e)}), 400
+        if not questions:
+            return jsonify({"ok": False, "error": "Fayldan savol topilmadi. Namuna (shablon) formatidan foydalaning."}), 400
+        max_idx = conn.execute("SELECT COALESCE(MAX(order_index),0) AS m FROM questions WHERE test_id = ?", (test_id,)).fetchone()["m"]
+        for idx, q in enumerate(questions, start=max_idx + 1):
+            conn.execute(
+                "INSERT INTO questions (test_id, order_index, text, option_a, option_b, option_c, option_d, correct_option) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (test_id, idx, q["text"], q["option_a"], q["option_b"], q["option_c"], q["option_d"], q["correct_option"]),
+            )
+        conn.commit()
+        total = conn.execute("SELECT COUNT(*) AS c FROM questions WHERE test_id = ?", (test_id,)).fetchone()["c"]
+        return jsonify({"ok": True, "added": len(questions), "total": total})
+    finally:
+        conn.close()
+
+
 @app.route("/api/tests/import", methods=["POST"])
 @teacher_required
 def import_test():
@@ -1846,15 +2018,52 @@ def import_test():
         conn.close()
 
 
+_TEMPLATE_ROWS = [
+    ["Savol", "A", "B", "C", "D", "To'g'ri javob"],
+    ["2 + 2 = ?", "3", "4", "5", "6", "B"],
+    ["O'zbekiston poytaxti?", "Samarqand", "Toshkent", "Buxoro", "Xiva", "B"],
+    ["Suv formulasi?", "CO2", "O2", "H2O", "NaCl", "C"],
+]
+
+
+@app.route("/api/tests/import-template.xlsx")
+@teacher_required
+def import_template_xlsx():
+    """Excel namuna fayli — ochilganda ustunlar to'g'ri joylashadi (buzilmaydi)."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Test"
+    header_fill = PatternFill("solid", fgColor="6A41FF")
+    for ci, val in enumerate(_TEMPLATE_ROWS[0], start=1):
+        cell = ws.cell(row=1, column=ci, value=val)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+    for ri, row in enumerate(_TEMPLATE_ROWS[1:], start=2):
+        for ci, val in enumerate(row, start=1):
+            ws.cell(row=ri, column=ci, value=val)
+    widths = [34, 16, 16, 16, 16, 14]
+    for ci, w in enumerate(widths, start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(ci)].width = w
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name="test_namuna.xlsx")
+
+
 @app.route("/api/tests/import-template.csv")
 @teacher_required
 def import_template():
+    # Excel'ning turli mintaqaviy sozlamalarida ochilishi uchun ; (nuqta-vergul) ajratgich + BOM
     output = io.StringIO()
     output.write("﻿")
-    w = csv.writer(output)
-    w.writerow(["Savol", "A", "B", "C", "D", "To'g'ri javob"])
-    w.writerow(["2 + 2 = ?", "3", "4", "5", "6", "B"])
-    w.writerow(["O'zbekiston poytaxti?", "Samarqand", "Toshkent", "Buxoro", "Xiva", "B"])
+    w = csv.writer(output, delimiter=";")
+    for row in _TEMPLATE_ROWS:
+        w.writerow(row)
     return Response(output.getvalue(), mimetype="text/csv; charset=utf-8",
                     headers={"Content-Disposition": "attachment; filename=test_namuna.csv"})
 

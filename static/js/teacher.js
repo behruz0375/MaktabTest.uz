@@ -18,7 +18,7 @@ const Teacher = {
     // Natijalar
     document.getElementById("res-class").onchange = (e) => this.loadResults(e.target.value);
     document.getElementById("res-subject").onchange = () => { if (this.currentResClass) this.loadResults(this.currentResClass); };
-    document.getElementById("res-refresh").onclick = () => { if (this.currentResClass) this.loadResults(this.currentResClass); };
+    document.getElementById("res-refresh").onclick = async () => { if (this.currentResClass) { await this.loadResults(this.currentResClass); UI.toast("Natijalar yangilandi ✓", "ok", 1500); } };
     document.getElementById("exp-excel").onclick = () => this.exportExcel();
     document.getElementById("exp-pdf").onclick = () => this.exportPDF();
     // O'quvchilar
@@ -41,7 +41,10 @@ const Teacher = {
     // O'qituvchilar
     document.getElementById("tch-add").onclick = () => this.addTeacher();
     // Statistika
-    document.getElementById("stats-refresh").onclick = () => this.loadStats();
+    document.getElementById("stats-refresh").onclick = async () => { await this.loadStats(); UI.toast("Statistika yangilandi ✓", "ok", 1500); };
+    // Maktab ma'lumotlarini tozalash (zavuch/boshqaruv)
+    const clearBtn = document.getElementById("clear-data-btn");
+    if (clearBtn) clearBtn.onclick = () => this.clearSchoolData();
     // Telefon burger menyu
     const burger = document.getElementById("burger");
     const overlay = document.getElementById("sidebar-overlay");
@@ -64,9 +67,9 @@ const Teacher = {
 
   downloadTemplate() {
     const a = document.createElement("a");
-    a.href = "/api/tests/import-template.csv"; a.download = "test_namuna.csv";
+    a.href = "/api/tests/import-template.xlsx"; a.download = "test_namuna.xlsx";
     document.body.appendChild(a); a.click(); a.remove();
-    UI.toast("Namuna fayl yuklandi. Excelда oching, to'ldiring, keyin yuklang.", "ok", 5000);
+    UI.toast("Namuna Excel fayli yuklandi. Oching, to'ldiring, keyin yuklang.", "ok", 5000);
   },
 
   importTest() {
@@ -162,6 +165,13 @@ const Teacher = {
       const school = isOwner ? (this.viewSchool ? this.viewSchool.name : "") : (t.school_name || "");
       brand.innerHTML = `${UI.esc(t.role_label || "O'qituvchi")} paneli${school ? `<br><span style="font-size:.82rem;color:var(--muted)">🏫 ${UI.esc(school)}</span>` : ""}`;
     }
+    // Oddiy o'qituvchi reyting/statistika va natijalarni YANGILAY olmaydi (faqat ko'radi)
+    const plainTeacher = t.role === "teacher";
+    const setDisp = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? "" : "none"; };
+    setDisp("stats-refresh", !plainTeacher);
+    setDisp("res-refresh", !plainTeacher);
+    // Maktab ma'lumotlarini tozalash — faqat zavuch/boshqaruv (maktabga kirgan holda)
+    setDisp("clear-data-box", isAdmin && entered);
   },
 
   async enterSchool(school) {
@@ -358,10 +368,11 @@ const Teacher = {
     const res = await API.get("/api/live" + (cls ? "?class_name=" + encodeURIComponent(cls) : ""));
     if (!res.ok) return;
     this._live = res.active;
+    const left = res.left || [];
     document.getElementById("live-count").textContent = res.count;
     document.getElementById("live-updated").textContent = "🔄 " + new Date().toLocaleTimeString();
     const box = document.getElementById("live-list");
-    if (!res.active.length) {
+    if (!res.active.length && !left.length) {
       box.innerHTML = '<p class="muted">Hozir hech kim test yechmayapti' + (cls ? " (" + UI.esc(cls) + ")" : "") + '. O\'quvchi test boshlaganда shu yerda paydo bo\'ladi.</p>';
       return;
     }
@@ -375,7 +386,8 @@ const Teacher = {
         <div class="student-avatar" style="background:linear-gradient(135deg,#23c483,#12b8ff)">${UI.esc(initials)}</div>
         <div class="student-info">
           <div class="name">${UI.esc(a.last_name)} ${UI.esc(a.first_name)} <span class="role-tag role-teacher">${UI.esc(a.class_name)}</span></div>
-          <div class="sub">📝 ${UI.esc(a.test_title)} • ${UI.esc(a.subject)} • 🔑 <b>${UI.esc(a.code)}</b> • ✍️ ${a.answered}/${a.q_total}</div>
+          <div class="sub">📝 ${UI.esc(a.test_title)} • ${UI.esc(a.subject)} • 🔑 <b>${UI.esc(a.code)}</b></div>
+          <div class="sub">🕐 Boshladi: <b>${UI.esc(a.started_clock || "-")}</b> • ✍️ Belgiladi: <b>${a.answered}/${a.q_total}</b></div>
         </div>
         <div class="live-timer">
           <span class="timer-label">Qolgan vaqt</span>
@@ -385,6 +397,28 @@ const Teacher = {
       row.querySelector("[data-stop-sub]").onclick = () => this.stopSubmission(a.sub_id, a);
       box.appendChild(row);
     });
+    if (left.length) {
+      const head = document.createElement("div");
+      head.className = "baho-group-title";
+      head.style.cssText = "margin:18px 0 8px;color:var(--danger-1)";
+      head.innerHTML = `⚠️ Test vaqtida chiqib ketganlar (so'nggi 5 daqiqa) — ${left.length} ta`;
+      box.appendChild(head);
+      left.forEach((a) => {
+        const initials = ((a.first_name[0] || "") + (a.last_name[0] || "")).toUpperCase();
+        const row = document.createElement("div");
+        row.className = "student-row blocked";
+        row.style.cursor = "default";
+        row.innerHTML = `
+          <div class="student-avatar" style="background:linear-gradient(135deg,#e94b4b,#f8a928)">${UI.esc(initials)}</div>
+          <div class="student-info">
+            <div class="name">${UI.esc(a.last_name)} ${UI.esc(a.first_name)} <span class="role-tag role-teacher">${UI.esc(a.class_name)}</span></div>
+            <div class="sub">📝 ${UI.esc(a.test_title)} • ${UI.esc(a.subject)} • 🔑 <b>${UI.esc(a.code)}</b></div>
+            <div class="sub">🕐 ${UI.esc(a.started_clock || "-")} → 🚪 ${UI.esc(a.left_clock || "-")} • ✍️ ${a.answered}/${a.q_total}</div>
+          </div>
+          <span class="status-pill danger">⚠️ ${UI.esc(a.reason)}</span>`;
+        box.appendChild(row);
+      });
+    }
   },
   stopSubmission(subId, a) {
     this.confirm("O'quvchini to'xtatish", `${a.last_name} ${a.first_name} ning testi hozir to'xtatiladi.`, async () => {
@@ -596,6 +630,7 @@ const Teacher = {
           <button class="btn btn-secondary btn-sm" data-act="code">🔄 Yangi kod</button>
           <button class="btn btn-ghost btn-sm" data-act="toggle">${t.is_active ? "⏸️ Yopish" : "▶️ Ochish"}</button>
           ${t.is_active ? '<button class="btn btn-danger btn-sm" data-act="stop">⏹️ To\'xtatish</button>' : ""}
+          <button class="btn btn-secondary btn-sm" data-act="importqs">📄 Fayldan savol</button>
           <button class="btn btn-secondary btn-sm" data-act="addqs">➕ Savol qo'shish</button>
           <button class="btn btn-danger btn-sm" data-act="del">🗑️ O'chirish</button>
         </div>
@@ -604,6 +639,7 @@ const Teacher = {
       card.querySelector('[data-act="toggle"]').onclick = () => this.toggleTest(t.id);
       const stopBtn = card.querySelector('[data-act="stop"]');
       if (stopBtn) stopBtn.onclick = () => this.stopTest(t.id, t.title);
+      card.querySelector('[data-act="importqs"]').onclick = () => this.openImportQuestionsModal(t.id, t.title, t.question_count);
       card.querySelector('[data-act="addqs"]').onclick = () => this.openAddQuestionsModal(t.id, t.title, t.question_count);
       card.querySelector('[data-act="del"]').onclick = () => this.deleteTest(t.id, t.title);
       box.appendChild(card);
@@ -633,6 +669,41 @@ const Teacher = {
       if (res.ok) { UI.toast("Test o'chirildi", "ok"); this.loadTests(); }
       else UI.toast(res.error || "Xatolik", "err");
     });
+  },
+
+  /* =============== TESTGA FAYLDAN SAVOL QO'SHISH =============== */
+  openImportQuestionsModal(testId, testTitle, currentCount) {
+    UI.modal(`
+      <span class="modal-icon">📄</span>
+      <h2 style="text-align:center">Fayldan savol qo'shish</h2>
+      <p style="text-align:center" class="muted">"${UI.esc(testTitle)}" testiga. Hozir: <b>${currentCount}</b> ta savol</p>
+      <p class="muted" style="text-align:center"><a href="#" id="iq-template" style="color:var(--primary-2);font-weight:700">📥 Namuna Excel faylni yuklab oling</a></p>
+      <div class="field-row" style="margin-top:10px"><label>Fayl (.xlsx .csv .docx .pdf)</label>
+        <input id="iq-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf"></div>
+      <div style="text-align:center;margin-top:10px">
+        <button class="btn btn-success" id="iq-save">📥 Fayldan qo'shish</button>
+      </div>
+      <div id="iq-progress" class="muted" style="text-align:center;margin-top:8px"></div>`);
+    document.getElementById("iq-template").onclick = (e) => { e.preventDefault(); this.downloadTemplate(); };
+    document.getElementById("iq-save").onclick = () => {
+      const file = document.getElementById("iq-file").files[0];
+      if (!file) return UI.toast("Fayl tanlang", "err");
+      const prog = document.getElementById("iq-progress");
+      prog.textContent = "⏳ Yuklanmoqda va o'qilmoqda...";
+      const fd = new FormData(); fd.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/tests/${testId}/import-questions`);
+      xhr.onload = () => {
+        let r = {}; try { r = JSON.parse(xhr.responseText); } catch (e) {}
+        if (xhr.status === 200 && r.ok) {
+          UI.closeModal();
+          UI.toast(`✅ ${r.added} ta savol qo'shildi! Jami: ${r.total} ta`, "ok", 5000);
+          this.loadTests();
+        } else { prog.textContent = ""; UI.toast(r.error || "Import xatolik", "err", 6000); }
+      };
+      xhr.onerror = () => { prog.textContent = ""; UI.toast("Tarmoq xatosi", "err"); };
+      xhr.send(fd);
+    };
   },
 
   /* =============== TESTGA SAVOL QO'SHISH =============== */
@@ -1001,6 +1072,40 @@ const Teacher = {
     State.teacher = res.teacher;
   },
 
+  /* =============== MAKTAB MA'LUMOTLARINI TOZALASH =============== */
+  clearSchoolData() {
+    UI.modal(`
+      <span class="modal-icon">🧹</span>
+      <h2 style="text-align:center;color:var(--danger-1)">Maktab ma'lumotlarini tozalash</h2>
+      <p style="text-align:center">Haqiqatan ham shu maktab ma'lumotlarini tozalaysizmi?</p>
+      <div style="background:var(--bg-2);border-radius:12px;padding:14px 18px;margin:14px 0">
+        <div style="font-weight:800;color:var(--danger-1);margin-bottom:6px">🗑️ O'chiriladi:</div>
+        <ul style="margin:0 0 10px 18px;line-height:1.8">
+          <li>Barcha <b>testlar</b> (qo'shilgan/import qilingan)</li>
+          <li>Testlarning barcha <b>savollari</b></li>
+          <li>Barcha <b>natijalar</b> (o'quvchilar topshirgan testlar)</li>
+        </ul>
+        <div style="font-weight:800;color:var(--success-1);margin-bottom:6px">✅ Saqlanadi (tegilmaydi):</div>
+        <ul style="margin:0 0 0 18px;line-height:1.8">
+          <li>O'quvchilar ro'yxati va coinlar</li>
+          <li>O'qituvchilar va ota-ona loginlari</li>
+          <li>Darslar (bilim olish) va mutolaa faoliyati</li>
+        </ul>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="cd-no">Bekor qilish</button>
+        <button class="btn btn-danger" id="cd-yes">Ha, testlar va natijalarni tozalash</button>
+      </div>`, { large: true });
+    document.getElementById("cd-no").onclick = () => UI.closeModal();
+    document.getElementById("cd-yes").onclick = async () => {
+      const res = await API.post("/api/school/clear-data");
+      if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+      UI.closeModal();
+      UI.toast(`Tozalandi: ${res.tests_deleted} ta test, ${res.submissions_deleted} ta natija o'chirildi ✓`, "ok", 5000);
+      if (this.currentSection === "tests") this.loadTests();
+    };
+  },
+
   /* =============== DARSLAR (BILIM OLISH) =============== */
   async loadLessons() {
     const res = await API.get("/api/lessons");
@@ -1184,19 +1289,50 @@ const Teacher = {
       const rank = i + 1;
       const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : rank;
       const badgeCls = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
-      const durTxt = s.total_duration_seconds > 0 ? ` • ⏱ ${this.fmtDurLong(s.total_duration_seconds)}` : "";
+      const durTxt = s.total_duration_seconds > 0 ? ` • ⏱ jami ${this.fmtDurLong(s.total_duration_seconds)}` : "";
+      const monthTxt = s.month_duration_seconds > 0 ? ` • 📅 shu oy ${this.fmtDurLong(s.month_duration_seconds)}` : "";
       const row = document.createElement("div");
       row.className = "student-row" + (rank === 1 && s.coins > 0 ? " top1" : "");
-      row.style.cursor = "default";
       row.innerHTML = `
         <div class="rank-badge ${badgeCls}">${medal}</div>
         <div class="student-info">
           <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</div>
-          <div class="sub">🎬 ${s.videos} video • 🎧 ${s.audios} audio • 📖 ${s.texts} matn${durTxt}</div>
+          <div class="sub">🎬 ${s.videos} video • 🎧 ${s.audios} audio • 📖 ${s.texts} matn${durTxt}${monthTxt}</div>
         </div>
         <span class="coin-badge">🪙 ${s.coins}</span>`;
+      row.onclick = () => this.showLearningDetail(s.id);
       box.appendChild(row);
     });
+  },
+
+  async showLearningDetail(studentId) {
+    const res = await API.get(`/api/learning/student/${studentId}`);
+    if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+    const s = res.student;
+    const icons = { video: "🎬", audio: "🎧", text: "📖" };
+    let rows = "";
+    if (!res.items.length) {
+      rows = `<tr><td colspan="4" style="text-align:center;color:var(--muted)">Hali dars ko'rmagan/o'qimagan.</td></tr>`;
+    } else {
+      rows = res.items.map((a) => `<tr>
+        <td>${icons[a.type] || ""} <b>${UI.esc(a.title)}</b><br><span class="muted">${UI.esc(a.subject)}</span></td>
+        <td>${a.duration_seconds > 0 ? this.fmtDurLong(a.duration_seconds) : "—"}</td>
+        <td>🪙 ${a.coins}</td>
+        <td>${UI.esc(a.completed_at || "-")}</td>
+      </tr>`).join("");
+    }
+    UI.modal(`
+      <h2>${UI.esc(s.last_name)} ${UI.esc(s.first_name)} <span class="muted" style="font-size:1rem">(${UI.esc(s.class_name)})</span></h2>
+      <div class="modal-info-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="info-box"><div class="k">🪙 Coinlar</div><div class="v">${s.coins}</div></div>
+        <div class="info-box"><div class="k">⏱ Jami vaqt</div><div class="v" style="font-size:1.05rem">${this.fmtDurLong(res.total_duration_seconds)}</div></div>
+        <div class="info-box"><div class="k">📅 Shu oy</div><div class="v" style="font-size:1.05rem">${this.fmtDurLong(res.month_duration_seconds)}</div></div>
+      </div>
+      <p class="muted" style="margin-top:8px">Ko'rilgan/o'qilgan darslar:</p>
+      <div style="overflow-x:auto"><table class="sub-table">
+        <thead><tr><th>Dars</th><th>Vaqt</th><th>Coin</th><th>Sana</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+    `, { large: true });
   },
 
   /* =============== EKSPORT =============== */

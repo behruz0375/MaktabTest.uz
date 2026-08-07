@@ -50,7 +50,7 @@ const Student = {
     this._statusPoll = setInterval(async () => {
       const ex = State.exam;
       if (!ex || !ex.active) return;
-      const res = await API.post("/api/student/status", { submission_id: ex.submissionId, token: ex.token });
+      const res = await API.post("/api/student/status", { submission_id: ex.submissionId, token: ex.token, answers: ex.answers });
       if (res.ok && res.status && res.status !== "in_progress" && ex.active) {
         this.teacherStopped();
       }

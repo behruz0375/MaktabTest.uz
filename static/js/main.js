@@ -23,7 +23,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const clearErrors = () =>
     document.querySelectorAll(".form-error").forEach((e) => (e.textContent = ""));
 
-  /* Login tablar (o'quvchi / o'qituvchi / ota-ona) */
+  /* Login tablar (o'quvchi / o'qituvchi / zavuch / boshqaruv / ota-ona) */
+  let staffRole = "teacher"; // qaysi xodim oynasi tanlangan
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.onclick = () => {
       document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
@@ -33,9 +34,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.getElementById(formId).classList.add("active");
       const hint = document.getElementById("staff-hint");
       if (hint && tab.dataset.hint) hint.textContent = tab.dataset.hint;
+      if (["teacher", "zavuch", "owner"].includes(tab.dataset.tab)) staffRole = tab.dataset.tab;
       clearErrors();
     };
   });
+  window.__getStaffRole = () => staffRole;
 
   /* O'quvchi rejimi: Test yechish / Bilim olish */
   function setStudentMode(mode) {
@@ -100,7 +103,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const btn = f.querySelector("button[type=submit]");
     const errEl = document.querySelector('.form-error[data-for="teacher"]');
     errEl.textContent = "";
-    const data = { username: f.elements.username.value.trim(), password: f.elements.password.value };
+    const data = { username: f.elements.username.value.trim(), password: f.elements.password.value,
+                   expected_role: (window.__getStaffRole ? window.__getStaffRole() : "teacher") };
     if (!data.username || !data.password) { errEl.textContent = "Login va parolni kiriting"; return; }
     btn.disabled = true; btn.textContent = "Kirilmoqda...";
     const res = await API.post("/api/teacher/login", data);
