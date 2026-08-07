@@ -1144,21 +1144,34 @@ const Teacher = {
       <span class="modal-icon">🕐</span>
       <h2 style="text-align:center">Tizim ish vaqti</h2>
       <p class="muted" style="text-align:center">O'quvchilar shu soatlar orasidagina test yecha/bilim ola oladi.</p>
-      <div class="grid-4" style="margin-top:10px">
+      <label class="chk-label" style="justify-content:center;margin:10px 0;padding:10px;background:var(--bg-2);border-radius:10px">
+        <input type="checkbox" id="wh-always"> <b>♾️ Doim ishlasin (24/7, cheklovsiz)</b>
+      </label>
+      <div class="grid-4" style="margin-top:6px" id="wh-hours">
         <div class="field-row"><label>Boshlanish (soat)</label><input id="wh-start" class="inp" type="number" min="0" max="23" value="8"></div>
         <div class="field-row"><label>Tugash (soat)</label><input id="wh-end" class="inp" type="number" min="1" max="24" value="21"></div>
       </div>
       <div style="text-align:center;margin-top:10px"><button class="btn btn-success" id="wh-save">💾 Saqlash</button></div>`);
+    const always = document.getElementById("wh-always");
+    const hoursBox = document.getElementById("wh-hours");
+    const syncAlways = () => { hoursBox.style.opacity = always.checked ? ".4" : "1"; document.getElementById("wh-start").disabled = always.checked; document.getElementById("wh-end").disabled = always.checked; };
+    always.onchange = syncAlways;
     API.get("/api/settings/work-hours").then((r) => {
-      if (r.ok) { document.getElementById("wh-start").value = r.start; document.getElementById("wh-end").value = r.end; }
+      if (r.ok) {
+        document.getElementById("wh-start").value = r.start;
+        document.getElementById("wh-end").value = r.end;
+        always.checked = (r.start === 0 && r.end === 24);
+        syncAlways();
+      }
     });
     document.getElementById("wh-save").onclick = async () => {
-      const start = parseInt(document.getElementById("wh-start").value, 10);
-      const end = parseInt(document.getElementById("wh-end").value, 10);
+      let start, end;
+      if (always.checked) { start = 0; end = 24; }
+      else { start = parseInt(document.getElementById("wh-start").value, 10); end = parseInt(document.getElementById("wh-end").value, 10); }
       const res = await API.post("/api/settings/work-hours", { start, end });
       if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
       UI.closeModal();
-      UI.toast(`Ish vaqti: ${res.start}:00–${res.end}:00 ✓`, "ok", 4000);
+      UI.toast(always.checked ? "Tizim doim ishlaydi (24/7) ✓" : `Ish vaqti: ${res.start}:00–${res.end}:00 ✓`, "ok", 4000);
     };
   },
 
