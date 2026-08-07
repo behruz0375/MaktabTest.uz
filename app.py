@@ -385,7 +385,7 @@ def create_test():
         code = unique_code(conn)
         cur = conn.execute(
             "INSERT INTO tests (title, subject, class_name, duration_minutes, code, is_active, school_id, created_at) "
-            "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
             (parsed["title"], parsed["subject"], parsed["class_name"], parsed["duration"], code, sid, now_iso()),
         )
         test_id = cur.lastrowid
@@ -474,6 +474,25 @@ def toggle_test(test_id):
         conn.execute("UPDATE tests SET is_active = ? WHERE id = ?", (new_state, test_id))
         conn.commit()
         return jsonify({"ok": True, "is_active": bool(new_state)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/tests/<int:test_id>/start", methods=["POST"])
+@teacher_required
+def start_test(test_id):
+    """Testni ishga tushiradi (faollashtiradi) — o'quvchilar kira oladi."""
+    conn = get_conn()
+    try:
+        t = conn.execute("SELECT * FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not t:
+            return jsonify({"ok": False, "error": "Test topilmadi"}), 404
+        sid = scope_school_id()
+        if sid is not None and t["school_id"] != sid:
+            return jsonify({"ok": False, "error": "Bu boshqa maktab testi"}), 403
+        conn.execute("UPDATE tests SET is_active = 1 WHERE id = ?", (test_id,))
+        conn.commit()
+        return jsonify({"ok": True, "code": t["code"]})
     finally:
         conn.close()
 
@@ -1594,7 +1613,7 @@ def import_test():
         code = unique_code(conn)
         cur = conn.execute(
             "INSERT INTO tests (title, subject, class_name, duration_minutes, code, is_active, school_id, created_at) "
-            "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
             (title, subject, class_name, duration, code, sid, now_iso()),
         )
         tid = cur.lastrowid

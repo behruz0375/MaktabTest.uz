@@ -103,6 +103,9 @@ const UI = {
       this.fillSelect(document.getElementById("ct-class"), m.classes, "Sinfni tanlang");
       this.fillSelect(document.getElementById("res-class"), m.classes, "— Sinf —");
       this.fillSelect(document.getElementById("stu-class"), m.classes, "— Sinf —");
+      // Fan filtri (natijalar) — "Barcha fanlar" birinchi
+      const rs = document.getElementById("res-subject");
+      if (rs) { rs.innerHTML = '<option value="">Barcha fanlar</option>'; m.subjects.forEach((s) => { const o = document.createElement("option"); o.value = s; o.textContent = s; rs.appendChild(o); }); }
       this.fillSelect(document.getElementById("ls-subject"), m.subjects, "Fanni tanlang");
       this.fillSelect(document.getElementById("ls-class"), m.classes, "Sinfni tanlang");
       this.fillSelect(document.getElementById("lrn-class"), m.classes, "— Sinf —");

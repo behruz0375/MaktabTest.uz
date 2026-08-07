@@ -23,7 +23,7 @@ const Learning = {
     this.lessons = payload.lessons || [];
     this.completed = new Set(payload.completed || []);
     document.getElementById("lr-student").textContent =
-      `${payload.student.first_name} ${payload.student.last_name} • ${payload.student.class_name}`;
+      `${payload.student.first_name} ${payload.student.last_name} • ${payload.student.class_name}${payload.school_name ? " • 🏫 " + payload.school_name : ""}`;
     document.getElementById("lr-coins").textContent = payload.student.coins || 0;
     this.currentSubject = null;
     this.renderSubjects();
@@ -175,14 +175,26 @@ const Learning = {
   },
 
   openText(l) {
-    const img = l.has_image ? `<img src="/api/lessons/${l.id}/image" alt="rasm">` : "";
-    UI.modal(`
-      <h2 style="text-align:center">📖 ${UI.esc(l.title)}</h2>
-      <div class="text-reader" id="text-reader">${img}${UI.esc(l.text_content || "")}</div>
-      <div style="text-align:center;margin-top:14px">
+    const img = l.has_image ? `<img src="/api/lessons/${l.id}/image" alt="rasm" class="reader-img">` : "";
+    const reader = document.getElementById("learn-reader");
+    document.querySelectorAll(".learn-pane").forEach((p) => p.classList.remove("active"));
+    document.querySelector(".learn-tabs").style.display = "none";
+    reader.style.display = "block";
+    reader.innerHTML = `
+      <button class="btn btn-ghost" id="reader-back" style="margin-bottom:14px">← Darslarga qaytish</button>
+      <h2 style="margin-bottom:12px">📖 ${UI.esc(l.title)}</h2>
+      ${img}
+      <div class="text-reader">${UI.esc(l.text_content || "")}</div>
+      <div style="text-align:center;margin-top:16px">
         <button class="btn btn-success" id="txt-done" disabled>Iltimos o'qing...</button>
       </div>
-      <div id="pl-done-area"></div>`, { large: true, onClose: () => { this.stopMedia(); this.refreshLearning(); } });
+      <div id="pl-done-area"></div>`;
+    this._closeReader = () => {
+      reader.style.display = "none"; reader.innerHTML = "";
+      document.querySelector(".learn-tabs").style.display = "";
+      this._closeReader = null; this.refreshLearning();
+    };
+    document.getElementById("reader-back").onclick = () => this._closeReader();
 
     const btn = document.getElementById("txt-done");
     let sec = 6;
@@ -221,7 +233,10 @@ const Learning = {
           <button class="btn btn-ghost" id="pl-close">Darslarga qaytish</button>
         </div>
       </div>`;
-    document.getElementById("pl-close").onclick = () => { UI.closeModal(); this.refreshLearning(); };
+    document.getElementById("pl-close").onclick = () => {
+      if (this._closeReader) this._closeReader();
+      else { UI.closeModal(); this.refreshLearning(); }
+    };
     if (l.related_test) document.getElementById("pl-test").onclick = () => this.startRelatedTest(l);
   },
 

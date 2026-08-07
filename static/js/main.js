@@ -71,10 +71,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (studentMode === "learn") {
       const schoolId = f.elements.school_id.value;
       if (!schoolId) { errEl.textContent = "Maktabingizni tanlang"; return; }
+      const schoolName = f.elements.school_id.selectedOptions[0] ? f.elements.school_id.selectedOptions[0].textContent : "";
       btn.disabled = true; btn.textContent = "Kirilmoqda...";
       const res = await API.post("/api/learning/enter", { first_name: first, last_name: last, class_name: cls, school_id: schoolId });
       btn.disabled = false; btn.textContent = "Bilim olishga kirish →";
       if (!res.ok) { errEl.textContent = res.error || "Xatolik"; return; }
+      res.school_name = schoolName;
       f.reset();
       setStudentMode("test");
       Learning.enter(res);

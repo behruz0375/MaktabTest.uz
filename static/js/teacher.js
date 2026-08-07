@@ -17,6 +17,8 @@ const Teacher = {
 
     // Natijalar
     document.getElementById("res-class").onchange = (e) => this.loadResults(e.target.value);
+    document.getElementById("res-subject").onchange = () => { if (this.currentResClass) this.loadResults(this.currentResClass); };
+    document.getElementById("res-refresh").onclick = () => { if (this.currentResClass) this.loadResults(this.currentResClass); };
     document.getElementById("exp-excel").onclick = () => this.exportExcel();
     document.getElementById("exp-pdf").onclick = () => this.exportPDF();
     // O'quvchilar
@@ -128,7 +130,10 @@ const Teacher = {
       banner.style.display = "none";
     }
     const brand = document.querySelector("#view-teacher .sidebar-brand span");
-    if (brand) brand.textContent = (t.role_label || "O'qituvchi") + " paneli";
+    if (brand) {
+      const school = isOwner ? (this.viewSchool ? this.viewSchool.name : "") : (t.school_name || "");
+      brand.innerHTML = `${UI.esc(t.role_label || "O'qituvchi")} paneli${school ? `<br><span style="font-size:.82rem;color:var(--muted)">🏫 ${UI.esc(school)}</span>` : ""}`;
+    }
   },
 
   async enterSchool(school) {
@@ -494,13 +499,19 @@ const Teacher = {
       <div class="code-reveal">
         <div class="lbl">O'quvchilar uchun kirish kodi:</div>
         <div class="code">${res.code}</div>
-        <div class="lbl">Bu kodni o'quvchilarga ayting. Har bir o'quvchi 1 marta kira oladi.</div>
+        <div class="lbl">⚠️ Test hali <b>boshlanmagan</b>. "Start berish"ни bosmaguningizcha o'quvchilar kira olmaydi.</div>
       </div>
-      <div style="text-align:center">
-        <button class="btn btn-primary" id="save-ok">Tushunarli 👍</button>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="save-ok">Keyinroq (Tushunarli)</button>
+        <button class="btn btn-success btn-lg" id="save-start">▶️ Start berish</button>
       </div>
     `);
-    document.getElementById("save-ok").onclick = () => UI.closeModal();
+    document.getElementById("save-ok").onclick = () => { UI.closeModal(); if (this.currentSection === "tests") this.loadTests(); };
+    document.getElementById("save-start").onclick = async () => {
+      const r = await API.post(`/api/tests/${res.test_id}/start`);
+      if (r.ok) { UI.toast("✅ Test boshlandi! O'quvchilar shu kod bilan kira oladi.", "ok", 5000); UI.closeModal(); if (this.currentSection === "tests") this.loadTests(); }
+      else UI.toast(r.error || "Xatolik", "err");
+    };
   },
 
   /* =============== TESTLARIM =============== */
@@ -572,6 +583,7 @@ const Teacher = {
     const minDur = Math.min(...s.submissions.filter((x) => x.percentage === maxPct).map((x) => x.duration_seconds || 0));
     return { pct: maxPct, dur: minDur, count: s.submissions.length };
   },
+  bahoOf(pct) { return pct >= 87 ? 5 : pct >= 71 ? 4 : pct >= 55 ? 3 : pct >= 40 ? 2 : 1; },
 
   starsFor(pct) {
     const n = pct >= 90 ? 5 : pct >= 75 ? 4 : pct >= 60 ? 3 : pct >= 40 ? 2 : 1;
@@ -585,12 +597,13 @@ const Teacher = {
     document.querySelectorAll("#res-class-buttons .class-btn").forEach((b) =>
       b.classList.toggle("active", b.textContent === cls)
     );
+    const subj = document.getElementById("res-subject").value;
     const titleEl = document.getElementById("results-title");
     const res = await API.get("/api/results?class_name=" + encodeURIComponent(cls));
     const box = document.getElementById("results-list");
     if (!res.ok) { box.innerHTML = ""; UI.toast(res.error || "Xatolik", "err"); return; }
     titleEl.style.display = "flex";
-    titleEl.innerHTML = `🏆 ${UI.esc(cls)} sinf — reyting va natijalar`;
+    titleEl.innerHTML = `🏆 ${UI.esc(cls)} sinf — natijalar${subj ? " • " + UI.esc(subj) : ""}`;
     this.currentResClass = cls;
     document.getElementById("results-export").style.display = "flex";
     if (!res.students.length) {
@@ -598,23 +611,36 @@ const Teacher = {
       return;
     }
     box.innerHTML = "";
-    const submitted = res.students.filter((s) => s.submitted);
-    const pending = res.students.filter((s) => !s.submitted);
-    // Umumiy reyting raqami (eng yaxshi ball + tez vaqt)
-    const ranked = submitted.map((s) => ({ s, st: this.bestStats(s) }));
+    // Fan bo'yicha filtr (mijoz tomonида)
+    const prep = res.students.map((s) => {
+      const subs = subj ? s.submissions.filter((x) => x.subject === subj) : s.submissions;
+      return { ...s, submissions: subs, submitted: subs.length > 0, has_violation: subs.some((x) => x.status === "terminated") };
+    });
+    const submitted = prep.filter((s) => s.submitted);
+    const pending = prep.filter((s) => !s.submitted);
+    const ranked = submitted.map((s) => ({ s, st: this.bestStats(s), baho: 0 }));
+    ranked.forEach((r) => (r.baho = this.bahoOf(r.st.pct)));
     ranked.sort((a, b) => (b.st.pct - a.st.pct) || (a.st.dur - b.st.dur));
     const rankMap = new Map();
     ranked.forEach(({ s }, i) => rankMap.set(s.id, i + 1));
+    // 1) BARCHA topshirgan o'quvchilar (reyting bo'yicha)
+    const allG = document.createElement("div");
+    allG.className = "baho-group";
+    allG.innerHTML = `<div class="baho-group-title">👥 Barcha natijalar (reyting) — ${submitted.length} ta</div>`;
+    const allL = document.createElement("div"); allL.className = "results-list";
+    ranked.forEach(({ s, st }) => allL.appendChild(this._resultRow(s, st, rankMap.get(s.id))));
+    allG.appendChild(allL); box.appendChild(allG);
 
-    // Baho bo'yicha guruhlar
+    // 2) Baho bo'yicha guruhlar (5/4/3/2/1)
     const groups = [
-      { baho: 5, cls: "baho-5", label: "A'lo (5 baho)" },
-      { baho: 4, cls: "baho-4", label: "Yaxshi (4 baho)" },
-      { baho: 3, cls: "baho-3", label: "Qoniqarli (3 baho)" },
-      { baho: 2, cls: "baho-2", label: "Qoniqarsiz (2 baho)" },
+      { baho: 5, cls: "baho-5", label: "5 baho olganlar (A'lo)" },
+      { baho: 4, cls: "baho-4", label: "4 baho olganlar (Yaxshi)" },
+      { baho: 3, cls: "baho-3", label: "3 baho olganlar (Qoniqarli)" },
+      { baho: 2, cls: "baho-2", label: "2 baho olganlar" },
+      { baho: 1, cls: "baho-2", label: "1 baho olganlar" },
     ];
     groups.forEach((g) => {
-      const items = ranked.filter(({ s }) => s.baho === g.baho);
+      const items = ranked.filter((r) => r.baho === g.baho);
       if (!items.length) return;
       const groupEl = document.createElement("div");
       groupEl.className = "baho-group";
