@@ -478,6 +478,31 @@ def toggle_test(test_id):
         conn.close()
 
 
+@app.route("/api/tests/<int:test_id>/stop", methods=["POST"])
+@teacher_required
+def stop_test(test_id):
+    """Testni to'xtatadi: yopadi + hozir yechayotganlarni yakunlaydi (joriy javob bilan)."""
+    conn = get_conn()
+    try:
+        t = conn.execute("SELECT * FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not t:
+            return jsonify({"ok": False, "error": "Test topilmadi"}), 404
+        sid = scope_school_id()
+        if sid is not None and t["school_id"] != sid:
+            return jsonify({"ok": False, "error": "Bu boshqa maktab testi"}), 403
+        conn.execute("UPDATE tests SET is_active = 0 WHERE id = ?", (test_id,))
+        active = conn.execute("SELECT * FROM submissions WHERE test_id = ? AND status = 'in_progress'", (test_id,)).fetchall()
+        for sub in active:
+            try:
+                answers = json.loads(sub["answers_json"] or "{}")
+            except Exception:
+                answers = {}
+            _grade_and_finish(conn, sub, answers, "completed")
+        return jsonify({"ok": True, "stopped": len(active)})
+    finally:
+        conn.close()
+
+
 # --------------------------------------------------------------------------
 # O'quvchilar ro'yxati (o'qituvchi boshqaradi)
 # --------------------------------------------------------------------------
@@ -911,6 +936,19 @@ def student_violation():
             return jsonify({"ok": True})
         _grade_and_finish(conn, sub, answers, "terminated", reason)
         return jsonify({"ok": True})
+    finally:
+        conn.close()
+
+
+@app.route("/api/student/status", methods=["POST"])
+def student_status():
+    """O'quvchi test holatini tekshiradi (o'qituvchi to'xtatдими)."""
+    data = request.get_json(force=True, silent=True) or {}
+    conn = get_conn()
+    try:
+        sub = conn.execute("SELECT status FROM submissions WHERE id = ? AND token = ?",
+                           (data.get("submission_id"), data.get("token") or "")).fetchone()
+        return jsonify({"ok": True, "status": sub["status"] if sub else "unknown"})
     finally:
         conn.close()
 
@@ -1513,6 +1551,77 @@ def stats():
         })
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------
+# FAYLDAN TEST IMPORT (Excel / CSV / Word / PDF)
+# --------------------------------------------------------------------------
+@app.route("/api/tests/import", methods=["POST"])
+@teacher_required
+def import_test():
+    import test_import
+    title = norm(request.form.get("title"))
+    subject = norm(request.form.get("subject"))
+    class_name = norm(request.form.get("class_name"))
+    try:
+        duration = int(request.form.get("duration_minutes"))
+    except (TypeError, ValueError):
+        duration = 0
+    if not title:
+        return jsonify({"ok": False, "error": "Test nomini kiriting"}), 400
+    if subject not in SUBJECTS:
+        return jsonify({"ok": False, "error": "Fanni tanlang"}), 400
+    if class_name not in CLASSES:
+        return jsonify({"ok": False, "error": "Sinfni tanlang"}), 400
+    if duration < 1:
+        return jsonify({"ok": False, "error": "Vaqtni (daqiqa) belgilang"}), 400
+    sid = scope_school_id()
+    if sid is None:
+        return jsonify({"ok": False, "error": "Avval maktabga kiring"}), 400
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "Fayl tanlang"}), 400
+    data = f.read()
+    try:
+        questions = test_import.parse_file(f.filename, data)
+    except Exception as e:
+        return jsonify({"ok": False, "error": "Faylni o'qib bo'lmadi: " + str(e)}), 400
+    if not questions:
+        return jsonify({"ok": False, "error": "Fayldan savol topilmadi. Namuna (shablon) formatidan foydalaning."}), 400
+
+    conn = get_conn()
+    try:
+        code = unique_code(conn)
+        cur = conn.execute(
+            "INSERT INTO tests (title, subject, class_name, duration_minutes, code, is_active, school_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+            (title, subject, class_name, duration, code, sid, now_iso()),
+        )
+        tid = cur.lastrowid
+        for idx, q in enumerate(questions, start=1):
+            conn.execute(
+                "INSERT INTO questions (test_id, order_index, text, option_a, option_b, option_c, option_d, correct_option) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (tid, idx, q["text"], q["option_a"], q["option_b"], q["option_c"], q["option_d"], q["correct_option"]),
+            )
+        conn.commit()
+        return jsonify({"ok": True, "test_id": tid, "code": code, "question_count": len(questions),
+                        "title": title, "subject": subject, "class_name": class_name, "duration_minutes": duration})
+    finally:
+        conn.close()
+
+
+@app.route("/api/tests/import-template.csv")
+@teacher_required
+def import_template():
+    output = io.StringIO()
+    output.write("﻿")
+    w = csv.writer(output)
+    w.writerow(["Savol", "A", "B", "C", "D", "To'g'ri javob"])
+    w.writerow(["2 + 2 = ?", "3", "4", "5", "6", "B"])
+    w.writerow(["O'zbekiston poytaxti?", "Samarqand", "Toshkent", "Buxoro", "Xiva", "B"])
+    return Response(output.getvalue(), mimetype="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": "attachment; filename=test_namuna.csv"})
 
 
 # --------------------------------------------------------------------------

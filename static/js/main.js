@@ -29,7 +29,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
       tab.classList.add("active");
       document.querySelectorAll(".login-form").forEach((f) => f.classList.remove("active"));
-      document.getElementById(tab.dataset.tab + "-login").classList.add("active");
+      const formId = tab.dataset.form || (tab.dataset.tab + "-login");
+      document.getElementById(formId).classList.add("active");
+      const hint = document.getElementById("staff-hint");
+      if (hint && tab.dataset.hint) hint.textContent = tab.dataset.hint;
       clearErrors();
     };
   });

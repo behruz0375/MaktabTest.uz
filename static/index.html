@@ -29,7 +29,9 @@
 
         <div class="tabs">
           <button class="tab active" data-tab="student">🎓 O'quvchi</button>
-          <button class="tab" data-tab="teacher">🧑‍🏫 O'qituvchi</button>
+          <button class="tab" data-tab="teacher" data-form="teacher-login" data-hint="O'qituvchi login va parolingiz bilan kiring">🧑‍🏫 O'qituvchi</button>
+          <button class="tab" data-tab="zavuch" data-form="teacher-login" data-hint="Zavuch login va parolingiz bilan kiring (maktab admini)">🏫 Zavuch</button>
+          <button class="tab" data-tab="owner" data-form="teacher-login" data-hint="Boshqaruv (egasi) login va parolingiz bilan kiring">👑 Boshqaruv</button>
           <button class="tab" data-tab="parent">👪 Ota-ona</button>
         </div>
 
@@ -92,7 +94,7 @@
           </div>
           <button type="submit" class="btn btn-primary btn-block">Panelga kirish →</button>
           <div class="form-error" data-for="teacher"></div>
-          <p class="hint">Standart: <b>admin</b> / <b>admin123</b> (keyin o'zgartiring)</p>
+          <p class="hint" id="staff-hint">O'qituvchi login va parolingiz bilan kiring</p>
         </form>
       </div>
       <footer class="login-foot">© 2026 MaktabTest.uz — bilim sari birinchi qadam</footer>
@@ -256,7 +258,24 @@
           <button class="back-btn" data-back>← Orqaga</button>
           <h2>➕ Yangi test qo'shish</h2>
         </div>
+
+        <!-- Fayldan import -->
+        <div class="card" id="import-card">
+          <h3 style="margin-bottom:8px">📄 Fayldan test yuklash (Excel / CSV / Word / PDF)</h3>
+          <p class="muted" style="margin-bottom:12px">Tayyor fayldan savollarni yuklang. <a href="#" id="imp-template" style="color:var(--primary-2);font-weight:700">📥 Namuna faylni yuklab oling</a> — shu ustunlarда to'ldiring: Savol | A | B | C | D | To'g'ri javob.</p>
+          <div class="grid-4">
+            <div class="field-row"><label>Test nomi</label><input id="imp-title" class="inp" placeholder="Masalan: Import test"></div>
+            <div class="field-row"><label>Fan</label><select id="imp-subject" class="inp"></select></div>
+            <div class="field-row"><label>Sinf</label><select id="imp-class" class="inp"></select></div>
+            <div class="field-row"><label>Vaqt (daqiqa)</label><input id="imp-duration" class="inp" type="number" min="1" value="20"></div>
+          </div>
+          <div class="field-row"><label>Fayl (.xlsx .csv .docx .pdf)</label><input id="imp-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf"></div>
+          <button id="imp-btn" class="btn btn-secondary">📥 Fayldan yuklash</button>
+          <div id="imp-progress" class="muted" style="margin-top:8px"></div>
+        </div>
+
         <div class="card">
+          <h3 style="margin-bottom:8px">✍️ Yoki qo'lda test tuzish</h3>
           <div class="field-row">
             <label>Test nomi</label>
             <input id="ct-title" class="inp" placeholder="Masalan: 1-chorak nazorat ishi">
@@ -295,7 +314,9 @@
         <div class="section-head">
           <button class="back-btn" data-back>← Orqaga</button>
           <h2>📋 Mening testlarim</h2>
+          <button id="tests-import-btn" class="btn btn-secondary btn-sm">📄 Fayldan test qo'shish</button>
         </div>
+        <p class="muted" style="margin-bottom:14px">Eski testlaringiz saqlanadi. Yangi test (Excel/Word/PDF yoki qo'lda) qo'shsangiz ro'yxatga qo'shiladi. Har testда ⏹️ To'xtatish va 🗑️ O'chirish bor.</p>
         <div id="tests-list" class="cards-grid"></div>
       </section>
 

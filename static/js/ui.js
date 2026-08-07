@@ -106,6 +106,8 @@ const UI = {
       this.fillSelect(document.getElementById("ls-subject"), m.subjects, "Fanni tanlang");
       this.fillSelect(document.getElementById("ls-class"), m.classes, "Sinfni tanlang");
       this.fillSelect(document.getElementById("lrn-class"), m.classes, "— Sinf —");
+      this.fillSelect(document.getElementById("imp-subject"), m.subjects, "Fanni tanlang");
+      this.fillSelect(document.getElementById("imp-class"), m.classes, "Sinfni tanlang");
       this.fillSelect(document.getElementById("par-class"), m.classes, "— Sinf —");
     }
   },

@@ -42,6 +42,51 @@ const Teacher = {
     // Maktablar (owner)
     document.getElementById("sch-add").onclick = () => this.addSchool();
     document.getElementById("school-exit").onclick = () => this.exitSchool();
+    // Fayldan import
+    document.getElementById("imp-btn").onclick = () => this.importTest();
+    document.getElementById("imp-template").onclick = (e) => { e.preventDefault(); this.downloadTemplate(); };
+    document.getElementById("tests-import-btn").onclick = () => {
+      this.showSection("create");
+      setTimeout(() => document.getElementById("import-card").scrollIntoView({ behavior: "smooth" }), 120);
+    };
+  },
+
+  downloadTemplate() {
+    const a = document.createElement("a");
+    a.href = "/api/tests/import-template.csv"; a.download = "test_namuna.csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    UI.toast("Namuna fayl yuklandi. Excelда oching, to'ldiring, keyin yuklang.", "ok", 5000);
+  },
+
+  importTest() {
+    const title = document.getElementById("imp-title").value.trim();
+    const subject = document.getElementById("imp-subject").value;
+    const cls = document.getElementById("imp-class").value;
+    const duration = parseInt(document.getElementById("imp-duration").value, 10);
+    const file = document.getElementById("imp-file").files[0];
+    if (!title) return UI.toast("Test nomini kiriting", "err");
+    if (!subject) return UI.toast("Fanni tanlang", "err");
+    if (!cls) return UI.toast("Sinfni tanlang", "err");
+    if (!duration || duration < 1) return UI.toast("Vaqtni (daqiqa) belgilang", "err");
+    if (!file) return UI.toast("Fayl tanlang", "err");
+    const fd = new FormData();
+    fd.append("title", title); fd.append("subject", subject); fd.append("class_name", cls);
+    fd.append("duration_minutes", duration); fd.append("file", file);
+    const prog = document.getElementById("imp-progress");
+    prog.textContent = "⏳ Yuklanmoqda va o'qilmoqda...";
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/tests/import");
+    xhr.onload = () => {
+      let r = {}; try { r = JSON.parse(xhr.responseText); } catch (e) {}
+      if (xhr.status === 200 && r.ok) {
+        prog.textContent = "";
+        this.showSaveModal(r);
+        document.getElementById("imp-title").value = "";
+        document.getElementById("imp-file").value = "";
+      } else { prog.textContent = ""; UI.toast(r.error || "Import xatolik", "err", 6000); }
+    };
+    xhr.onerror = () => { prog.textContent = ""; UI.toast("Tarmoq xatosi", "err"); };
+    xhr.send(fd);
   },
 
   toggleLessonType(type) {
@@ -482,11 +527,14 @@ const Teacher = {
         <div class="card-actions">
           <button class="btn btn-secondary btn-sm" data-act="code">🔄 Yangi kod</button>
           <button class="btn btn-ghost btn-sm" data-act="toggle">${t.is_active ? "⏸️ Yopish" : "▶️ Ochish"}</button>
+          ${t.is_active ? '<button class="btn btn-danger btn-sm" data-act="stop">⏹️ To\'xtatish</button>' : ""}
           <button class="btn btn-danger btn-sm" data-act="del">🗑️ O'chirish</button>
         </div>
       `;
       card.querySelector('[data-act="code"]').onclick = () => this.regenCode(t.id);
       card.querySelector('[data-act="toggle"]').onclick = () => this.toggleTest(t.id);
+      const stopBtn = card.querySelector('[data-act="stop"]');
+      if (stopBtn) stopBtn.onclick = () => this.stopTest(t.id, t.title);
       card.querySelector('[data-act="del"]').onclick = () => this.deleteTest(t.id, t.title);
       box.appendChild(card);
     });
@@ -501,6 +549,13 @@ const Teacher = {
     const res = await API.post(`/api/tests/${id}/toggle`);
     if (res.ok) this.loadTests();
     else UI.toast(res.error || "Xatolik", "err");
+  },
+  stopTest(id, title) {
+    this.confirm("Testni to'xtatish", `"${title}" testi to'xtatiladi. Hozir yechayotgan o'quvchilar tugatiladi (joriy javoblari saqlanadi) va yangi kirish yopiladi.`, async () => {
+      const res = await API.post(`/api/tests/${id}/stop`);
+      if (res.ok) { UI.toast(`Test to'xtatildi (${res.stopped} ta yechayotgan yakunlandi)`, "ok", 4000); this.loadTests(); }
+      else UI.toast(res.error || "Xatolik", "err");
+    });
   },
   deleteTest(id, title) {
     this.confirm("Testni o'chirish", `"${title}" testi va uning natijalari o'chiriladi. Davom etasizmi?`, async () => {

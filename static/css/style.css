@@ -202,6 +202,7 @@ body {
 /* Tablar */
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   background: var(--inp-bg);
   border-radius: var(--radius);
   padding: 6px;
@@ -210,13 +211,14 @@ body {
   border: 1px solid var(--inp-border);
 }
 .tab {
-  flex: 1;
-  padding: 12px;
+  flex: 1 1 auto;
+  min-width: 90px;
+  padding: 11px 8px;
   border: none;
   background: transparent;
   color: var(--muted);
   font-weight: 700;
-  font-size: 1rem;
+  font-size: .95rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: var(--trans);

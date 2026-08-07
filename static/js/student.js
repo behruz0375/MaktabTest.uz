@@ -40,8 +40,35 @@ const Student = {
     this.renderQuestion(0);
     this.startTimer();
     this.trapBack();
+    this.startStatusPoll();
     // Anti-cheat'ni 1 soniyadan keyin yoqamiz (kirish bosilishi bilan yolg'on ishlamasin)
     setTimeout(() => this.enableAntiCheat(), 1000);
+  },
+
+  /* O'qituvchi testni to'xtatганини sezish (har 10s) */
+  startStatusPoll() {
+    this._statusPoll = setInterval(async () => {
+      const ex = State.exam;
+      if (!ex || !ex.active) return;
+      const res = await API.post("/api/student/status", { submission_id: ex.submissionId, token: ex.token });
+      if (res.ok && res.status && res.status !== "in_progress" && ex.active) {
+        this.teacherStopped();
+      }
+    }, 10000);
+  },
+  stopStatusPoll() {
+    if (this._statusPoll) { clearInterval(this._statusPoll); this._statusPoll = null; }
+  },
+  async teacherStopped() {
+    const ex = State.exam;
+    if (!ex || !ex.active) return;
+    ex.active = false; ex.finished = true;
+    this.stopTimer(); this.stopStatusPoll(); this.disableAntiCheat();
+    // Saqlangan natijani olamiz
+    const res = await API.post("/api/student/submit", { submission_id: ex.submissionId, token: ex.token, answers: ex.answers });
+    UI.toast("Test o'qituvchi tomonidan to'xtatildi", "warn", 4000);
+    if (res.ok) this.showResult(res.result);
+    else { this.reset(); UI.showView("view-login"); }
   },
 
   renderQuestion(i) {
@@ -159,6 +186,7 @@ const Student = {
     ex.finished = true;
     ex.active = false;
     this.stopTimer();
+    this.stopStatusPoll();
     this.disableAntiCheat();
     UI.closeModal();
     const res = await API.post("/api/student/submit", {
@@ -256,6 +284,7 @@ const Student = {
     ex.active = false;
     ex.finished = true;
     this.stopTimer();
+    this.stopStatusPoll();
     this.disableAntiCheat();
     await API.post("/api/student/violation", {
       submission_id: ex.submissionId, token: ex.token, answers: ex.answers, reason,
@@ -287,6 +316,7 @@ const Student = {
 
   reset() {
     this.stopTimer();
+    this.stopStatusPoll();
     this.disableAntiCheat();
     if (this._onPop) window.removeEventListener("popstate", this._onPop);
     State.exam = null;
