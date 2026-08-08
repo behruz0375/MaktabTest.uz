@@ -60,6 +60,7 @@ const Parent = {
     const bahoLabel = bahoIsMonthly ? "📅 Shu oy o'zlashtirish (baho)" : (st.overall_baho ? "📊 Umumiy o'zlashtirish (baho)" : "📅 Shu oy o'zlashtirish (baho)");
     const pctShown = bahoIsMonthly ? st.monthly_pct : (st.overall_baho ? st.overall_pct : st.monthly_pct);
     const daily = res.daily || [];
+    const chartHtml = UI.chart7(daily);
     const dailyHtml = daily.length
       ? `<h3 style="margin:6px 0 8px">📆 Kunlik bilim olish vaqti</h3>
          <div class="daily-time-list" style="margin-bottom:16px">${daily.map((d) => `
@@ -76,6 +77,7 @@ const Parent = {
         <div class="stat-tile"><div class="num">🪙 ${st.coins || 0}</div><div class="lbl">Coinlar</div></div>
       </div>
       <p class="muted" style="margin-bottom:14px">🎬 ${st.videos || 0} video • 🎧 ${st.audios || 0} audio • 📖 ${st.texts || 0} matn • ⏱ jami: ${this.fmtDurLong(st.total_duration_seconds)} • 📝 ${st.tests_count || 0} test topshirgan.</p>
+      ${chartHtml}
       ${dailyHtml}`;
 
     const tbox = document.getElementById("parent-tests");

@@ -145,6 +145,32 @@ const UI = {
     });
   },
 
+  /* --- Oxirgi 7 kun faolligi diagrammasi (bilim olish vaqti) --- */
+  chart7(daily, opts = {}) {
+    const map = {};
+    (daily || []).forEach((d) => { map[d.date] = d.seconds || 0; });
+    const wd = ["Yak", "Du", "Se", "Cho", "Pay", "Ju", "Sha"];
+    const now = new Date();
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const ds = dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+      days.push({ date: ds, seconds: map[ds] || 0, dow: wd[dt.getDay()], isToday: i === 0 });
+    }
+    const max = Math.max(1, ...days.map((d) => d.seconds));
+    const fmt = (s) => (s >= 3600 ? (s / 3600).toFixed(1) + "s" : s >= 60 ? Math.round(s / 60) + "d" : s > 0 ? s + "s" : "");
+    const bars = days.map((d) => {
+      const h = d.seconds > 0 ? Math.max(8, Math.round((d.seconds / max) * 100)) : 0;
+      return `<div class="c7-col${d.isToday ? " today" : ""}" title="${d.date}: ${fmt(d.seconds) || "0"}">
+        <div class="c7-val">${fmt(d.seconds)}</div>
+        <div class="c7-track"><div class="c7-bar" style="height:${h}%"></div></div>
+        <div class="c7-day">${d.dow}</div>
+      </div>`;
+    }).join("");
+    const title = opts.title || "📊 Oxirgi 7 kun faolligi";
+    return `<div class="chart7-box"><div class="chart7-title">${title}</div><div class="chart7">${bars}</div></div>`;
+  },
+
   /* --- HTML xavfsiz chiqarish --- */
   esc(s) {
     return String(s == null ? "" : s)

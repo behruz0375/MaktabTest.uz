@@ -12,6 +12,7 @@ const Learning = {
         document.querySelectorAll(".learn-pane").forEach((p) => p.classList.remove("active"));
         document.getElementById("learn-" + t.dataset.ltab).classList.add("active");
         if (t.dataset.ltab === "subjects") this.renderSubjects();
+        if (t.dataset.ltab === "profile") this.renderProfile();
       };
     });
     document.getElementById("subj-back").onclick = () => this.renderSubjects();
@@ -30,6 +31,7 @@ const Learning = {
     this.daily = payload.daily || [];
     this.todaySeconds = payload.student.today_duration_seconds || 0;
     this.monthSeconds = payload.student.month_duration_seconds || 0;
+    this.schoolName = payload.school_name || "";
     this.currentSubject = null;
     this.renderSubjects();
     this.renderMyDaily();
@@ -84,6 +86,45 @@ const Learning = {
           <span class="muted">Bugun: <b>${this._fmtDurLong(this.todaySeconds)}</b> • Shu oy: <b>${this._fmtDurLong(this.monthSeconds)}</b> • Jami: <b>${this._fmtDurLong(this._totalSeconds)}</b></span>
         </div>
         <div class="daily-time-list">${rows}</div>
+      </div>`;
+  },
+
+  /* O'quvchi profili — to'liq ma'lumot */
+  renderProfile() {
+    const box = document.getElementById("profile-content");
+    if (!box) return;
+    const s = this.student || {};
+    const initials = ((s.first_name ? s.first_name[0] : "") + (s.last_name ? s.last_name[0] : "")).toUpperCase();
+    const totalLessons = this.lessons.length;
+    const done = this.lessons.filter((l) => this.completed.has(l.id)).length;
+    const faollik = totalLessons ? Math.round(done / totalLessons * 100) : 0;
+    const v = this.lessons.filter((l) => l.type === "video").length;
+    const a = this.lessons.filter((l) => l.type === "audio").length;
+    const t = this.lessons.filter((l) => l.type === "text").length;
+    const dailyRows = (this.daily || []).length
+      ? (this.daily.map((d) => `<div class="daily-time-row${d.date === this._todayStr() ? " today" : ""}">
+          <span class="d-date">${this._dateLabel(d.date)} <span class="muted" style="font-size:.8rem">${d.date}</span></span>
+          <span class="d-secs">⏱ ${this._fmtDurLong(d.seconds)}</span></div>`).join(""))
+      : '<p class="muted">Hali vaqt yozilmagan.</p>';
+    box.innerHTML = `
+      <div class="profile-card">
+        <div class="profile-head">
+          <div class="student-avatar" style="width:64px;height:64px;font-size:1.6rem">${UI.esc(initials)}</div>
+          <div>
+            <h2 style="margin:0">${UI.esc(s.first_name)} ${UI.esc(s.last_name)}</h2>
+            <div class="muted">${UI.esc(s.class_name)}${this.schoolName ? " • 🏫 " + UI.esc(this.schoolName) : ""}</div>
+          </div>
+        </div>
+        <div class="stat-tiles" style="margin-top:16px">
+          <div class="stat-tile"><div class="num">🪙 ${s.coins || 0}</div><div class="lbl">Coinlar</div></div>
+          <div class="stat-tile"><div class="num">📈 ${faollik}%</div><div class="lbl">Faollik (${done}/${totalLessons})</div></div>
+          <div class="stat-tile"><div class="num">⏱ ${this._fmtDurLong(this._totalSeconds)}</div><div class="lbl">Jami vaqt</div></div>
+          <div class="stat-tile"><div class="num">📅 ${this._fmtDurLong(this.todaySeconds)}</div><div class="lbl">Bugun</div></div>
+        </div>
+        <p class="muted" style="margin:12px 0">📚 Sinfingizda ${totalLessons} ta dars: 🎬 ${v} video • 🎧 ${a} audio • 📖 ${t} matn. Shu oy: ⏱ ${this._fmtDurLong(this.monthSeconds)}.</p>
+        ${UI.chart7(this.daily)}
+        <h3 style="margin:10px 0 8px">📆 Kunlik vaqtim</h3>
+        <div class="daily-time-list">${dailyRows}</div>
       </div>`;
   },
 

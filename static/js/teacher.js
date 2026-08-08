@@ -189,6 +189,7 @@ const Teacher = {
     show("schools", isOwner);
     ["stats", "create", "tests", "lessons", "results", "live", "learning", "students"].forEach((s) => show(s, entered));
     ["teachers", "parents"].forEach((s) => show(s, isAdmin && entered));
+    show("profile", true);
     show("settings", true);
     const banner = document.getElementById("school-banner");
     if (isOwner && this.viewSchool) {
@@ -319,6 +320,7 @@ const Teacher = {
     if (id === "stats") this.loadStats();
     if (id === "parents") this.renderParClassButtons();
     if (id === "teachers") this.loadTeachers();
+    if (id === "profile") this.loadProfile();
     if (id === "live") this.startLive(); else this.stopLive();
     if (id === "schools") this.loadSchools();
     window.scrollTo(0, 0);
@@ -1005,7 +1007,7 @@ const Teacher = {
       const st = this.bestStats(s);
       const rankTxt = rank ? `<span class="status-pill done">🏆 ${rank}-o'rin</span>` : "";
       header = `
-        <div class="modal-info-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="modal-info-grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr))">
           <div class="info-box"><div class="k">Eng yaxshi ball</div><div class="v">${st.pct}%</div></div>
           <div class="info-box"><div class="k">Eng tez vaqt</div><div class="v" style="font-size:1.05rem">${this.fmtDur(st.dur)}</div></div>
           <div class="info-box"><div class="k">Testlar</div><div class="v">${st.count} ta</div></div>
@@ -1637,12 +1639,13 @@ const Teacher = {
       : "";
     UI.modal(`
       <h2>${UI.esc(s.last_name)} ${UI.esc(s.first_name)} <span class="muted" style="font-size:1rem">(${UI.esc(s.class_name)})</span></h2>
-      <div class="modal-info-grid" style="grid-template-columns:repeat(4,1fr)">
+      <div class="modal-info-grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr))">
         <div class="info-box"><div class="k">🪙 Coinlar</div><div class="v">${s.coins}</div></div>
         <div class="info-box"><div class="k">📅 Bugun</div><div class="v" style="font-size:1.05rem">${this.fmtDurLong(res.today_duration_seconds)}</div></div>
         <div class="info-box"><div class="k">🗓 Shu oy</div><div class="v" style="font-size:1.05rem">${this.fmtDurLong(res.month_duration_seconds)}</div></div>
         <div class="info-box"><div class="k">⏱ Jami vaqt</div><div class="v" style="font-size:1.05rem">${this.fmtDurLong(res.total_duration_seconds)}</div></div>
       </div>
+      ${UI.chart7(daily)}
       ${dailyHtml}
       <p class="muted" style="margin-top:12px">Ko'rilgan/o'qilgan darslar:</p>
       <div style="overflow-x:auto"><table class="sub-table">
@@ -1921,6 +1924,43 @@ const Teacher = {
       if (res.ok) { UI.toast("O'chirildi", "ok"); this.loadTeachers(); }
       else UI.toast(res.error || "Xatolik", "err");
     });
+  },
+
+  /* =============== PROFIL (panel egasi) =============== */
+  async loadProfile() {
+    const box = document.getElementById("profile-panel-content");
+    if (!box) return;
+    box.innerHTML = '<p class="muted">Yuklanmoqda...</p>';
+    const res = await API.get("/api/profile");
+    if (!res.ok) { box.innerHTML = '<p class="muted">Xatolik</p>'; return; }
+    const p = res.profile;
+    const c = p.counts || {};
+    const initials = (p.username || "?").slice(0, 2).toUpperCase();
+    const acList = p.assigned_classes ? p.assigned_classes.split(",").filter(Boolean) : [];
+    const acHtml = acList.length
+      ? acList.map((x) => `<span class="chip on">${UI.esc(x)}</span>`).join(" ")
+      : '<span class="muted">Barcha sinflar</span>';
+    const tiles = [];
+    if (p.role === "owner") tiles.push(`<div class="stat-tile"><div class="num">🏫 ${c.schools != null ? c.schools : "—"}</div><div class="lbl">Maktablar</div></div>`);
+    tiles.push(`<div class="stat-tile"><div class="num">👥 ${c.students || 0}</div><div class="lbl">O'quvchilar</div></div>`);
+    tiles.push(`<div class="stat-tile"><div class="num">📋 ${c.tests || 0}</div><div class="lbl">${p.role === "teacher" ? "Mening testlarim" : "Testlar"}</div></div>`);
+    tiles.push(`<div class="stat-tile"><div class="num">📚 ${c.lessons || 0}</div><div class="lbl">Darslar</div></div>`);
+    box.innerHTML = `
+      <div class="profile-card">
+        <div class="profile-head">
+          <div class="student-avatar" style="width:64px;height:64px;font-size:1.6rem">${UI.esc(initials)}</div>
+          <div>
+            <h2 style="margin:0">${UI.esc(p.username)}</h2>
+            <div><span class="role-tag role-${p.role}">${UI.esc(p.role_label)}</span>${p.school_name ? ` <span class="muted">🏫 ${UI.esc(p.school_name)}</span>` : ""}</div>
+          </div>
+        </div>
+        <div class="stat-tiles" style="margin-top:16px">${tiles.join("")}</div>
+        <div class="field-row" style="margin-top:16px"><label>📌 Biriktirilgan sinflar</label><div>${acHtml}</div></div>
+        <div class="field-row"><label>🗓 Ro'yxatdan o'tgan sana</label><div>${UI.esc(p.created_at || "—")}</div></div>
+        <div style="margin-top:14px"><button class="btn btn-secondary" id="prof-to-settings">⚙️ Login/parolni o'zgartirish</button></div>
+      </div>`;
+    const b = document.getElementById("prof-to-settings");
+    if (b) b.onclick = () => this.showSection("settings");
   },
 
   /* =============== STATISTIKA / REYTING =============== */

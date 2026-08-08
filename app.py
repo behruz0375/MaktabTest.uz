@@ -368,6 +368,49 @@ def teacher_me():
                                             "assigned_classes": ac or ""}})
 
 
+@app.route("/api/profile")
+@teacher_required
+def profile():
+    """Panel egasining to'liq profili + sanoqlar."""
+    conn = get_conn()
+    try:
+        tid = session["teacher_id"]
+        t = conn.execute("SELECT * FROM teachers WHERE id = ?", (tid,)).fetchone()
+        if not t:
+            return jsonify({"ok": False}), 404
+        role = session.get("role") or "teacher"
+        sc_, sp_ = school_clause()
+        # O'qituvchi bo'lsa faqat ruxsat etilgan sinflar bo'yicha sanoq
+        allowed = teacher_allowed_classes(conn)
+        acl, acp = "", []
+        if allowed is not None:
+            ph = ",".join("?" for _ in allowed)
+            acl = " AND class_name IN (" + ph + ") "
+            acp = list(allowed)
+        students = conn.execute("SELECT COUNT(*) AS c FROM students WHERE 1=1" + sc_ + acl, sp_ + acp).fetchone()["c"]
+        lessons = conn.execute("SELECT COUNT(*) AS c FROM lessons WHERE 1=1" + sc_ + acl, sp_ + acp).fetchone()["c"]
+        if role == "teacher":
+            my_tests = conn.execute("SELECT COUNT(*) AS c FROM tests WHERE created_by = ?", (tid,)).fetchone()["c"]
+            tests = my_tests
+        else:
+            tests = conn.execute("SELECT COUNT(*) AS c FROM tests WHERE 1=1" + sc_, sp_).fetchone()["c"]
+            my_tests = conn.execute("SELECT COUNT(*) AS c FROM tests WHERE created_by = ?", (tid,)).fetchone()["c"]
+        school_name = session.get("view_school_name") if role == "owner" else session.get("school_name")
+        schools = None
+        if role == "owner":
+            schools = conn.execute("SELECT COUNT(*) AS c FROM schools").fetchone()["c"]
+        return jsonify({"ok": True, "profile": {
+            "username": t["username"], "role": role, "role_label": ROLE_LABELS.get(role, "O'qituvchi"),
+            "is_admin": bool(session.get("is_admin")),
+            "school_name": school_name,
+            "assigned_classes": t["assigned_classes"] or "",
+            "created_at": t["created_at"],
+            "counts": {"students": students, "tests": tests, "lessons": lessons, "my_tests": my_tests, "schools": schools},
+        }})
+    finally:
+        conn.close()
+
+
 @app.route("/api/teacher/credentials", methods=["POST"])
 @teacher_required
 def teacher_credentials():

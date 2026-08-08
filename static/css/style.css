@@ -232,6 +232,8 @@ body {
 
 .login-form { display: none; flex-direction: column; gap: 16px; }
 .login-form.active { display: flex; animation: fadeIn .4s ease; }
+/* Test/bilim rejimi maydonlari bir-biriga tiqilib qolmasin */
+#student-test-fields, #student-learn-fields { display: flex; flex-direction: column; gap: 16px; }
 
 /* Floating label inputlar */
 .field { position: relative; text-align: left; }
@@ -784,17 +786,21 @@ select option,
   padding: 34px;
   max-width: 560px;
   width: 100%;
-  max-height: 88vh;
-  overflow-y: auto;
+  max-height: 90vh;
+  overflow: hidden;              /* modalning o'zi scroll bo'lmaydi — X doim ko'rinadi */
+  display: flex; flex-direction: column;
   box-shadow: 0 24px 70px rgba(0, 0, 0, .5);
   animation: modalPop .4s cubic-bezier(.2, 1.2, .3, 1);
 }
+/* Uzun modalда faqat ichki kontent scroll bo'ladi (X tugmasi joyida qoladi) */
+.modal-content { overflow-y: auto; min-height: 0; flex: 1; }
 @keyframes modalPop { from { opacity: 0; transform: scale(.85) translateY(20px); } to { opacity: 1; transform: none; } }
 .modal-close {
-  position: absolute; top: 14px; right: 16px;
+  position: absolute; top: 14px; right: 16px; z-index: 6;
   width: 36px; height: 36px; border-radius: 50%;
   border: none; background: var(--inp-bg); color: var(--text);
   font-size: 1.1rem; cursor: pointer; transition: var(--trans);
+  display: grid; place-items: center;
 }
 .modal-close:hover { background: var(--danger-1); color: #fff; transform: rotate(90deg); }
 .modal-content h2 { margin-bottom: 12px; }
@@ -928,6 +934,23 @@ select option,
   .parent-cred { flex-direction: column; align-items: stretch; }
   .parent-cred .pc-creds { flex-direction: column; }
   .theme-toggle { width: 44px; height: 44px; font-size: 1.2rem; top: 12px; right: 12px; }
+  /* Yangi bo'limlar mobil uchun */
+  .learn-tabs { flex-wrap: wrap; }
+  .stat-tiles { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-tile .num { font-size: 1.3rem; }
+  .profile-card { padding: 16px; }
+  .profile-head { gap: 12px; }
+  .profile-head h2 { font-size: 1.25rem; }
+  .chart7 { gap: 3px; height: 116px; }
+  .chart7-box { padding: 12px 10px; }
+  .c7-track { max-width: 26px; height: 68px; }
+  .c7-val { font-size: .6rem; }
+  .c7-day { font-size: .68rem; }
+  .modal-info-grid { gap: 8px; }
+  .info-box { padding: 10px; }
+  .info-box .v { font-size: 1.05rem; }
+  /* Mutolaa qatoridagi login/parol matni sig'sin */
+  .student-info .sub { overflow-wrap: anywhere; }
 }
 @media (max-width: 460px) {
   .login-card { padding: 26px 18px; }
@@ -1128,8 +1151,22 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 .my-time-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; }
 .my-time-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .my-time-head b { font-size: 1.05rem; }
+.profile-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 20px; max-width: 720px; margin: 0 auto; }
+.profile-head { display: flex; align-items: center; gap: 16px; }
 .search-inp { margin-bottom: 14px; }
 .search-empty { padding: 10px 0; }
+
+/* Oxirgi 7 kun faolligi diagrammasi */
+.chart7-box { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; }
+.chart7-title { font-weight: 800; margin-bottom: 12px; }
+.chart7 { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; height: 130px; }
+.c7-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; gap: 4px; }
+.c7-track { width: 100%; max-width: 34px; height: 78px; display: flex; align-items: flex-end; background: var(--inp-bg); border-radius: 8px 8px 4px 4px; overflow: hidden; }
+.c7-bar { width: 100%; background: linear-gradient(180deg, var(--primary-2), var(--primary-1)); border-radius: 8px 8px 0 0; transition: height .4s ease; min-height: 0; }
+.c7-col.today .c7-bar { background: linear-gradient(180deg, var(--success-2), var(--success-1)); }
+.c7-val { font-size: .72rem; font-weight: 800; color: var(--muted); min-height: 14px; }
+.c7-day { font-size: .78rem; font-weight: 700; color: var(--text); }
+.c7-col.today .c7-day { color: var(--success-1); }
 .text-reader img { max-width: 100%; border-radius: var(--radius-sm); margin: 12px 0; display: block; }
 
 /* Statistika / dashboard */

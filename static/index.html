@@ -169,6 +169,7 @@
       <div class="learn-tabs">
         <button class="learn-tab active" data-ltab="subjects">📚 Fanlar</button>
         <button class="learn-tab" data-ltab="games">🎮 O'yinlar</button>
+        <button class="learn-tab" data-ltab="profile">👤 Profil</button>
       </div>
       <div id="learn-subjects" class="learn-pane active">
         <div id="my-daily-time"></div>
@@ -182,6 +183,7 @@
         </div>
       </div>
       <div id="learn-games" class="learn-pane"><div id="games-grid" class="games-grid"></div></div>
+      <div id="learn-profile" class="learn-pane"><div id="profile-content"></div></div>
       <div id="learn-reader" class="learn-reader" style="display:none"></div>
     </div>
   </div>
@@ -226,6 +228,7 @@
         <button class="side-btn" data-section="students">👥 <span>O'quvchilar ro'yxati</span></button>
         <button class="side-btn" data-section="parents">👪 <span>Ota-onalar (login)</span></button>
         <button class="side-btn" data-section="teachers">🧑‍🏫 <span>O'qituvchilar</span></button>
+        <button class="side-btn" data-section="profile">👤 <span>Profil</span></button>
         <button class="side-btn" data-section="settings">⚙️ <span>Sozlamalar</span></button>
       </nav>
       <button id="teacher-logout" class="side-btn logout">🚪 <span>Chiqish</span></button>
@@ -572,6 +575,15 @@
           <button id="tch-add" class="btn btn-success">➕ Panel qo'shish</button>
         </div>
         <div id="teachers-list" class="results-list"></div>
+      </section>
+
+      <!-- === Profil (panel egasi) === -->
+      <section id="sec-profile" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>👤 Mening profilim</h2>
+        </div>
+        <div id="profile-panel-content"></div>
       </section>
 
       <!-- === Sozlamalar === -->
