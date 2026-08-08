@@ -116,6 +116,13 @@ const UI = {
       this.fillSelect(document.getElementById("ls-subject"), m.subjects, "Fanni tanlang");
       this.fillSelect(document.getElementById("ls-class"), m.classes, "Sinfni tanlang");
       this.fillSelect(document.getElementById("lrn-class"), m.classes, "— Sinf —");
+      // Mutolaa: "Hamma sinflar" opsiyasi
+      const lc = document.getElementById("lrn-class");
+      if (lc && !lc.querySelector('option[value="__all__"]')) {
+        const oall = document.createElement("option");
+        oall.value = "__all__"; oall.textContent = "🏫 Hamma sinflar";
+        lc.insertBefore(oall, lc.children[1] || null);
+      }
       this.fillSelect(document.getElementById("imp-subject"), m.subjects, "Fanni tanlang");
       this.fillSelect(document.getElementById("imp-class"), m.classes, "Sinfni tanlang");
       this.fillSelect(document.getElementById("par-class"), m.classes, "— Sinf —");

@@ -1562,18 +1562,29 @@ def learning_start_test():
 def learning_results():
     class_name = norm(request.args.get("class_name"))
     subject = norm(request.args.get("subject"))
-    if class_name not in CLASSES:
+    all_classes = (class_name == "__all__")
+    if not all_classes and class_name not in CLASSES:
         return jsonify({"ok": False, "error": "Sinf tanlang"}), 400
     conn = get_conn()
     try:
         sc_, sp_ = school_clause()
         # O'qituvchi sinf cheklovi
-        role = session.get("role", "teacher")
-        if role == "teacher":
-            allowed = get_teacher_classes(conn, session["teacher_id"])
-            if allowed and class_name not in allowed:
-                return jsonify({"ok": False, "error": "Sizga bu sinf biriktirilmagan"}), 403
-        students = conn.execute("SELECT * FROM students WHERE class_name = ?" + sc_ + " ORDER BY last_name, first_name", [class_name] + sp_).fetchall()
+        allowed = teacher_allowed_classes(conn)
+        if not all_classes and allowed is not None and class_name not in allowed:
+            return jsonify({"ok": False, "error": "Sizga bu sinf biriktirilmagan"}), 403
+        if all_classes:
+            if allowed is not None:
+                ph = ",".join("?" for _ in allowed)
+                students = conn.execute(
+                    "SELECT * FROM students WHERE class_name IN (" + ph + ")" + sc_ + " ORDER BY class_name, last_name, first_name",
+                    list(allowed) + sp_,
+                ).fetchall()
+            else:
+                students = conn.execute(
+                    "SELECT * FROM students WHERE 1=1" + sc_ + " ORDER BY class_name, last_name, first_name", sp_,
+                ).fetchall()
+        else:
+            students = conn.execute("SELECT * FROM students WHERE class_name = ?" + sc_ + " ORDER BY last_name, first_name", [class_name] + sp_).fetchall()
         out = []
         for s in students:
             if subject:

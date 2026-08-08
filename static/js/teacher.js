@@ -309,9 +309,16 @@ const Teacher = {
     const box = document.getElementById("lrn-class-buttons");
     if (!box || box.dataset.done === "1") return;
     box.innerHTML = "";
+    const allBtn = document.createElement("button");
+    allBtn.className = "class-btn";
+    allBtn.dataset.cls = "__all__";
+    allBtn.textContent = "🏫 Hamma";
+    allBtn.onclick = () => { document.getElementById("lrn-class").value = "__all__"; this.loadLearning("__all__"); };
+    box.appendChild(allBtn);
     State.meta.classes.forEach((c) => {
       const b = document.createElement("button");
       b.className = "class-btn";
+      b.dataset.cls = c;
       b.textContent = c;
       b.onclick = () => { document.getElementById("lrn-class").value = c; this.loadLearning(c); };
       box.appendChild(b);
@@ -1405,8 +1412,9 @@ const Teacher = {
 
   async loadLearning(cls) {
     if (!cls) return;
+    const isAll = cls === "__all__";
     this.currentLrnClass = cls;
-    document.querySelectorAll("#lrn-class-buttons .class-btn").forEach((b) => b.classList.toggle("active", b.textContent === cls));
+    document.querySelectorAll("#lrn-class-buttons .class-btn").forEach((b) => b.classList.toggle("active", (b.dataset.cls || b.textContent) === cls));
     const subj = document.getElementById("lrn-subject") ? document.getElementById("lrn-subject").value : "";
     const url = "/api/learning/results?class_name=" + encodeURIComponent(cls) + (subj ? "&subject=" + encodeURIComponent(subj) : "");
     const res = await API.get(url);
@@ -1414,7 +1422,9 @@ const Teacher = {
     const title = document.getElementById("learning-title");
     if (!res.ok) { box.innerHTML = ""; UI.toast(res.error || "Xatolik", "err"); return; }
     title.style.display = "flex";
-    title.innerHTML = `🎓 ${UI.esc(cls)} sinf — mutolaa reytingi${subj ? " • " + UI.esc(subj) : ""}`;
+    title.innerHTML = isAll
+      ? `🎓 Barcha sinflar — mutolaa reytingi${subj ? " • " + UI.esc(subj) : ""}`
+      : `🎓 ${UI.esc(cls)} sinf — mutolaa reytingi${subj ? " • " + UI.esc(subj) : ""}`;
     const rbox = document.getElementById("lrn-refresh-box"); if (rbox) rbox.style.display = "block";
     if (!res.students.length) { box.innerHTML = '<p class="muted">Bu sinfda ma\'lumot yo\'q.</p>'; return; }
     box.innerHTML = "";
@@ -1429,7 +1439,7 @@ const Teacher = {
       row.innerHTML = `
         <div class="rank-badge ${badgeCls}">${medal}</div>
         <div class="student-info">
-          <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${this.bahoBadgeHtml(s.baho, "Oylik baho")}</div>
+          <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${this.bahoBadgeHtml(s.baho, "Oylik baho")}${isAll && s.class_name ? ` <span class="role-tag role-teacher">${UI.esc(s.class_name)}</span>` : ""}</div>
           <div class="sub">🎬 ${s.videos} video • 🎧 ${s.audios} audio • 📖 ${s.texts} matn${durTxt}${monthTxt}</div>
         </div>
         <span class="coin-badge">🪙 ${s.coins}</span>`;
