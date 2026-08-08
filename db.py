@@ -156,6 +156,13 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT
 );
 
+CREATE TABLE IF NOT EXISTS learning_daily (
+    student_id INTEGER NOT NULL,
+    date       TEXT NOT NULL,
+    seconds    INTEGER DEFAULT 0,
+    PRIMARY KEY (student_id, date)
+);
+
 CREATE INDEX IF NOT EXISTS idx_questions_test ON questions(test_id);
 CREATE INDEX IF NOT EXISTS idx_sub_test ON submissions(test_id);
 CREATE INDEX IF NOT EXISTS idx_sub_student ON submissions(student_id);

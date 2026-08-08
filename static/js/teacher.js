@@ -1464,18 +1464,39 @@ const Teacher = {
         <td>${UI.esc(a.completed_at || "-")}</td>
       </tr>`).join("");
     }
+    const daily = (res.daily || []);
+    const dailyHtml = daily.length
+      ? `<p class="muted" style="margin-top:12px">📆 Kunlik sarflangan vaqt:</p>
+         <div class="daily-time-list">${daily.map((d) => `
+           <div class="daily-time-row${d.date === this._todayStr() ? " today" : ""}">
+             <span class="d-date">${this._dateLabel(d.date)}</span>
+             <span class="d-secs">⏱ ${this.fmtDurLong(d.seconds)}</span>
+           </div>`).join("")}</div>`
+      : "";
     UI.modal(`
       <h2>${UI.esc(s.last_name)} ${UI.esc(s.first_name)} <span class="muted" style="font-size:1rem">(${UI.esc(s.class_name)})</span></h2>
-      <div class="modal-info-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="modal-info-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="info-box"><div class="k">🪙 Coinlar</div><div class="v">${s.coins}</div></div>
+        <div class="info-box"><div class="k">📅 Bugun</div><div class="v" style="font-size:1.05rem">${this.fmtDurLong(res.today_duration_seconds)}</div></div>
+        <div class="info-box"><div class="k">🗓 Shu oy</div><div class="v" style="font-size:1.05rem">${this.fmtDurLong(res.month_duration_seconds)}</div></div>
         <div class="info-box"><div class="k">⏱ Jami vaqt</div><div class="v" style="font-size:1.05rem">${this.fmtDurLong(res.total_duration_seconds)}</div></div>
-        <div class="info-box"><div class="k">📅 Shu oy</div><div class="v" style="font-size:1.05rem">${this.fmtDurLong(res.month_duration_seconds)}</div></div>
       </div>
-      <p class="muted" style="margin-top:8px">Ko'rilgan/o'qilgan darslar:</p>
+      ${dailyHtml}
+      <p class="muted" style="margin-top:12px">Ko'rilgan/o'qilgan darslar:</p>
       <div style="overflow-x:auto"><table class="sub-table">
         <thead><tr><th>Dars</th><th>Vaqt</th><th>Coin</th><th>Sana</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
     `, { large: true });
+  },
+
+  _todayStr() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); },
+  _dateLabel(dateStr) {
+    const today = this._todayStr();
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    const yStr = y.getFullYear() + "-" + String(y.getMonth() + 1).padStart(2, "0") + "-" + String(y.getDate()).padStart(2, "0");
+    if (dateStr === today) return "Bugun (" + dateStr + ")";
+    if (dateStr === yStr) return "Kecha (" + dateStr + ")";
+    return dateStr;
   },
 
   /* =============== EKSPORT =============== */

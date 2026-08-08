@@ -208,6 +208,33 @@ def teacher_class_denied(conn, class_name):
     return None
 
 
+def add_daily_time(conn, student_id, seconds):
+    """Bugungi kunga o'quvchining sarflagan vaqtini (soniya) qo'shadi."""
+    if not seconds or seconds <= 0:
+        return
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn.execute(
+        "INSERT INTO learning_daily (student_id, date, seconds) VALUES (?, ?, ?) "
+        "ON CONFLICT(student_id, date) DO UPDATE SET seconds = seconds + excluded.seconds",
+        (student_id, today, int(seconds)),
+    )
+
+
+def time_breakdown(conn, student_id, days=14):
+    """Kunlik/oylik vaqt taqsimoti (soniyada)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    ym = datetime.now().strftime("%Y-%m")
+    rows = conn.execute(
+        "SELECT date, seconds FROM learning_daily WHERE student_id = ? ORDER BY date DESC LIMIT ?",
+        (student_id, days),
+    ).fetchall()
+    daily = [{"date": r["date"], "seconds": r["seconds"] or 0} for r in rows]
+    total = conn.execute("SELECT COALESCE(SUM(seconds),0) AS s FROM learning_daily WHERE student_id = ?", (student_id,)).fetchone()["s"]
+    month = conn.execute("SELECT COALESCE(SUM(seconds),0) AS s FROM learning_daily WHERE student_id = ? AND substr(date,1,7) = ?", (student_id, ym)).fetchone()["s"]
+    today_sec = conn.execute("SELECT COALESCE(SUM(seconds),0) AS s FROM learning_daily WHERE student_id = ? AND date = ?", (student_id, today)).fetchone()["s"]
+    return {"daily": daily, "total_seconds": total, "month_seconds": month, "today_seconds": today_sec}
+
+
 def monthly_pct(conn, student_id):
     """Joriy oydagi o'rtacha o'zlashtirish foizi (test natijalari bo'yicha)."""
     ym = datetime.now().strftime("%Y-%m")
@@ -1479,6 +1506,7 @@ def learning_watch():
                 "VALUES (?, ?, ?, 0, ?, 0, ?)",
                 (student_id, lesson_id, l["type"], seconds, now_iso()),
             )
+        add_daily_time(conn, student_id, seconds)
         conn.commit()
         return jsonify({"ok": True})
     finally:
@@ -1507,6 +1535,7 @@ def learning_complete():
                 if duration_seconds > 0:
                     conn.execute("UPDATE learning_activity SET duration_seconds = COALESCE(duration_seconds,0) + ? WHERE id = ?",
                                  (duration_seconds, existing["id"]))
+                    add_daily_time(conn, student_id, duration_seconds)
                     conn.commit()
                 return jsonify({"ok": True, "already": True, "coins": 0, "total_coins": s["coins"] or 0})
             # Heartbeat orqali boshlangan (tugatilmagan) — endi tugatildi, coin beriladi
@@ -1519,6 +1548,7 @@ def learning_complete():
                 "VALUES (?, ?, ?, ?, ?, 1, ?)",
                 (student_id, lesson_id, l["type"], coins, duration_seconds, now_iso()),
             )
+        add_daily_time(conn, student_id, duration_seconds)
         conn.execute("UPDATE students SET coins = COALESCE(coins,0) + ? WHERE id = ?", (coins, student_id))
         conn.commit()
         total = conn.execute("SELECT coins FROM students WHERE id = ?", (student_id,)).fetchone()["coins"]
@@ -1668,13 +1698,16 @@ def learning_student_detail(student_id):
                 "coins": a["coins_awarded"] or 0, "duration_seconds": dur,
                 "completed_at": a["completed_at"],
             })
+        bd = time_breakdown(conn, student_id)
         return jsonify({
             "ok": True,
             "student": {"id": s["id"], "first_name": s["first_name"], "last_name": s["last_name"],
                         "class_name": s["class_name"], "coins": s["coins"] or 0},
             "items": items,
-            "total_duration_seconds": total_dur,
-            "month_duration_seconds": month_dur,
+            "total_duration_seconds": bd["total_seconds"] or total_dur,
+            "month_duration_seconds": bd["month_seconds"],
+            "today_duration_seconds": bd["today_seconds"],
+            "daily": bd["daily"],
         })
     finally:
         conn.close()
@@ -1779,6 +1812,7 @@ def parent_activity():
             if (a["completed_at"] or "")[:7] == ym:
                 month_dur += d
         mpct = monthly_pct(conn, sid)
+        bd = time_breakdown(conn, sid)
         return jsonify({
             "ok": True,
             "student": {"first_name": s["first_name"], "last_name": s["last_name"],
@@ -1786,8 +1820,10 @@ def parent_activity():
                         "monthly_pct": mpct, "monthly_baho": baho_from_pct(mpct),
                         "videos": counts["video"], "audios": counts["audio"], "texts": counts["text"],
                         "tests_count": len(tests),
-                        "total_duration_seconds": total_dur, "month_duration_seconds": month_dur},
-            "tests": tests, "learning": learning,
+                        "total_duration_seconds": bd["total_seconds"] or total_dur,
+                        "month_duration_seconds": bd["month_seconds"],
+                        "today_duration_seconds": bd["today_seconds"]},
+            "tests": tests, "learning": learning, "daily": bd["daily"],
         })
     finally:
         conn.close()

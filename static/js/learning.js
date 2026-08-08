@@ -135,17 +135,22 @@ const Learning = {
     }
   },
 
-  /* Ko'rilgan vaqtni serverga yozib boradi (video/audio uchun) */
+  /* ===== KO'RILGAN VAQTNI HISOBLASH (video/audio) ===== */
+  _fmtClock(s) { s = Math.max(0, Math.round(s || 0)); const m = Math.floor(s / 60), ss = s % 60; return m + ":" + String(ss).padStart(2, "0"); },
   _startWatch(lessonId) {
-    this._watchUnflushed = 0;
     this._watchLesson = lessonId;
+    this._watchUnflushed = 0;   // serverga hali yuborilmagan soniyalar
+    this._watchTotal = 0;       // shu sessiyada ko'rilgan jami soniya (ekranda)
+    this._watchPlaying = false; // hozir o'ynayaptimi
     this._stopWatchTimer();
+    // Har soniya: agar o'ynayotgan bo'lsa vaqtni sanaymiz; to'xtasa — sanamaymiz
     this._watchTimer = setInterval(() => {
-      const m = document.getElementById("lesson-media");
-      if (m && !m.paused && !m.ended && m.currentTime > 0) {
-        this._watchUnflushed++;
-        if (this._watchUnflushed >= 15) this._flushWatch();
-      }
+      if (!this._watchPlaying) return;
+      this._watchUnflushed++;
+      this._watchTotal++;
+      const c = document.getElementById("watch-clock");
+      if (c) c.textContent = "⏱ " + this._fmtClock(this._watchTotal);
+      if (this._watchUnflushed >= 10) this._flushWatch();  // har 10s da serverga yozamiz
     }, 1000);
   },
   async _flushWatch() {
@@ -154,7 +159,7 @@ const Learning = {
     this._watchUnflushed = 0;
     try { await API.post("/api/learning/watch", { student_id: this.student.id, lesson_id: this._watchLesson, seconds: secs }); } catch (e) {}
   },
-  _stopWatchTimer() { if (this._watchTimer) { clearInterval(this._watchTimer); this._watchTimer = null; } },
+  _stopWatchTimer() { if (this._watchTimer) { clearInterval(this._watchTimer); this._watchTimer = null; } this._watchPlaying = false; },
 
   openMedia(l) {
     const isVideo = l.type === "video";
@@ -162,28 +167,43 @@ const Learning = {
     UI.modal(`
       <h2 style="text-align:center">${isVideo ? "🎬" : "🎧"} ${UI.esc(l.title)}</h2>
       <div class="player-wrap">
-        <div class="player-media-box">
-          <${tag} id="lesson-media" playsinline></${tag}>
+        <div class="player-media-box" id="media-box">
+          <${tag} id="lesson-media" playsinline preload="none"></${tag}>
           <div class="spinner" id="media-spinner"></div>
+          <button class="media-load-btn" id="media-load" type="button">
+            <span class="mlb-icon">${isVideo ? "▶" : "🎧"}</span>
+            <span class="mlb-text">${isVideo ? "Videoni yuklab ko'rish" : "Audioni yuklab tinglash"}</span>
+            <span class="mlb-sub">${l.file_size_mb ? l.file_size_mb + " MB" : "Bosing"}</span>
+          </button>
         </div>
         <div class="player-bar"><div class="player-fill" id="player-fill"></div></div>
         <div class="player-controls">
-          <button class="btn btn-secondary btn-sm" id="pl-play">▶️ Boshlash</button>
+          <button class="btn btn-secondary btn-sm" id="pl-play" disabled>▶️ Boshlash</button>
           <button class="btn rewind-btn btn-sm" id="pl-rewind">⏪ 10s orqaga</button>
           <span class="player-note" id="pl-time">0%</span>
+          <span class="watch-clock" id="watch-clock">⏱ 0:00</span>
         </div>
-        <p class="player-note">⚠️ Darsni oldinga o'tkazib yoki tezlashtirib bo'lmaydi. Faqat 10 soniya orqaga qaytarish mumkin.</p>
+        <p class="player-note">⚠️ Darsni oldinga o'tkazib yoki tezlashtirib bo'lmaydi. To'xtatsangiz vaqt ham to'xtaydi.</p>
         <div id="pl-done-area"></div>
       </div>`, { large: true, onClose: () => { this._flushWatch(); this._stopWatchTimer(); this.stopMedia(); this.refreshLearning(); } });
 
     this._startWatch(l.id);
     const media = document.getElementById("lesson-media");
     const spin = document.getElementById("media-spinner");
+    const loadBtn = document.getElementById("media-load");
+    const playBtn = document.getElementById("pl-play");
     const showSpin = () => spin && spin.classList.add("on");
     const hideSpin = () => spin && spin.classList.remove("on");
-    ["waiting", "loadstart", "stalled", "seeking"].forEach((ev) => media.addEventListener(ev, showSpin));
-    ["playing", "canplay", "canplaythrough", "pause", "ended", "error"].forEach((ev) => media.addEventListener(ev, hideSpin));
-    media.src = `/api/lessons/${l.id}/media`;
+
+    // Vaqt hisoblash o'ynash/to'xtash hodisalariga bog'liq (ishonchli)
+    media.addEventListener("playing", () => { this._watchPlaying = true; hideSpin(); playBtn.textContent = "⏸️ To'xtatish"; });
+    media.addEventListener("play", () => { playBtn.textContent = "⏸️ To'xtatish"; });
+    media.addEventListener("pause", () => { this._watchPlaying = false; hideSpin(); this._flushWatch(); playBtn.textContent = "▶️ Davom etish"; });
+    media.addEventListener("waiting", () => { this._watchPlaying = false; showSpin(); });
+    media.addEventListener("stalled", showSpin);
+    media.addEventListener("ended", () => { this._watchPlaying = false; hideSpin(); this.showComplete(l); });
+    media.addEventListener("error", () => { hideSpin(); if (media.src) UI.toast("Faylni yuklashda xatolik", "err"); });
+
     media.controls = false;
     media.playbackRate = 1;
     let maxWatched = 0;
@@ -197,16 +217,23 @@ const Learning = {
     media.addEventListener("seeking", () => {
       if (media.currentTime > maxWatched + 1.0) media.currentTime = maxWatched;
     });
-    media.addEventListener("ended", () => this.showComplete(l));
     media.oncontextmenu = (e) => e.preventDefault();
 
-    const btn = document.getElementById("pl-play");
-    btn.onclick = () => {
-      if (media.paused) { media.play(); btn.textContent = "⏸️ To'xtatish"; }
-      else { media.pause(); btn.textContent = "▶️ Davom etish"; }
+    // Telegram uslubi: faqat bosilganda yuklanadi va o'ynaydi
+    const loadAndPlay = () => {
+      if (loadBtn) loadBtn.style.display = "none";
+      showSpin();
+      if (!media.src) media.src = `/api/lessons/${l.id}/media`;
+      playBtn.disabled = false;
+      media.play().catch(() => { hideSpin(); playBtn.textContent = "▶️ Boshlash"; });
+    };
+    loadBtn.onclick = loadAndPlay;
+    playBtn.onclick = () => {
+      if (!media.src) { loadAndPlay(); return; }
+      if (media.paused) media.play(); else media.pause();
     };
     document.getElementById("pl-rewind").onclick = () => {
-      media.currentTime = Math.max(0, media.currentTime - 10);
+      if (media.src) media.currentTime = Math.max(0, media.currentTime - 10);
     };
   },
 
