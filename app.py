@@ -719,6 +719,40 @@ def add_student():
         conn.close()
 
 
+@app.route("/api/students/<int:student_id>", methods=["PUT"])
+@role_required("owner", "zavuch")
+def update_student(student_id):
+    """O'quvchi ism/familiya/sinfini tahrirlaydi (sinfini almashtirish ham) — zavuch/boshqaruv."""
+    data = request.get_json(force=True, silent=True) or {}
+    first = norm(data.get("first_name"))
+    last = norm(data.get("last_name"))
+    class_name = norm(data.get("class_name"))
+    if not first or not last:
+        return jsonify({"ok": False, "error": "Ism va familiyani kiriting"}), 400
+    if class_name not in CLASSES:
+        return jsonify({"ok": False, "error": "Sinf noto'g'ri"}), 400
+    sid = scope_school_id()
+    conn = get_conn()
+    try:
+        s = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+        if not s:
+            return jsonify({"ok": False, "error": "O'quvchi topilmadi"}), 404
+        if sid is not None and s["school_id"] != sid:
+            return jsonify({"ok": False, "error": "Bu boshqa maktab o'quvchisi"}), 403
+        dup = conn.execute(
+            "SELECT 1 FROM students WHERE lower(first_name)=lower(?) AND lower(last_name)=lower(?) AND class_name=? AND school_id IS ? AND id != ?",
+            (first, last, class_name, s["school_id"], student_id),
+        ).fetchone()
+        if dup:
+            return jsonify({"ok": False, "error": "Bu ism-familiya shu sinfda allaqachon bor"}), 400
+        conn.execute("UPDATE students SET first_name = ?, last_name = ?, class_name = ? WHERE id = ?",
+                     (first, last, class_name, student_id))
+        conn.commit()
+        return jsonify({"ok": True, "id": student_id, "class_name": class_name})
+    finally:
+        conn.close()
+
+
 @app.route("/api/students/<int:student_id>", methods=["DELETE"])
 @role_required("owner", "zavuch")
 def delete_student(student_id):
@@ -1641,6 +1675,14 @@ def learning_results():
                 ).fetchall()
         else:
             students = conn.execute("SELECT * FROM students WHERE class_name = ?" + sc_ + " ORDER BY last_name, first_name", [class_name] + sp_).fetchall()
+        # Har sinf uchun mavjud darslar soni (faollik foizini hisoblash uchun)
+        subj_l = " AND subject = ? " if subject else ""
+        subj_p = [subject] if subject else []
+        lt_rows = conn.execute(
+            "SELECT class_name, COUNT(*) AS c FROM lessons WHERE 1=1" + sc_ + subj_l + " GROUP BY class_name",
+            sp_ + subj_p,
+        ).fetchall()
+        lesson_totals = {r["class_name"]: r["c"] for r in lt_rows}
         out = []
         for s in students:
             if subject:
@@ -1678,12 +1720,22 @@ def learning_results():
                     (s["id"], ym),
                 ).fetchone()["d"]
             mpct = monthly_pct(conn, s["id"])
+            # Faollik foizi: tugatilgan darslar / sinfdagi mavjud darslar
+            done_completed = conn.execute(
+                "SELECT COUNT(DISTINCT la.lesson_id) AS c FROM learning_activity la "
+                "JOIN lessons l ON l.id = la.lesson_id "
+                "WHERE la.student_id = ? AND la.completed = 1 AND l.class_name = ?" + (" AND l.subject = ?" if subject else ""),
+                ([s["id"], s["class_name"]] + ([subject] if subject else [])),
+            ).fetchone()["c"]
+            total_lessons = lesson_totals.get(s["class_name"], 0)
+            faollik_pct = round(min(100, done_completed / total_lessons * 100), 0) if total_lessons else None
             out.append({
                 "id": s["id"], "first_name": s["first_name"], "last_name": s["last_name"],
                 "coins": s["coins"] or 0, "videos": counts["video"], "audios": counts["audio"],
                 "texts": counts["text"], "total": counts["video"] + counts["audio"] + counts["text"],
                 "total_duration_seconds": total_dur, "month_duration_seconds": month_dur,
                 "class_name": s["class_name"], "monthly_pct": mpct, "baho": baho_from_pct(mpct),
+                "faollik_pct": faollik_pct, "done_lessons": done_completed, "total_lessons": total_lessons,
             })
         out.sort(key=lambda x: -x["coins"])
         return jsonify({"ok": True, "class_name": class_name, "subject": subject, "students": out})

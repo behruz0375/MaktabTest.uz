@@ -43,6 +43,14 @@ const Teacher = {
     document.getElementById("tch-add").onclick = () => this.addTeacher();
     // Statistika
     document.getElementById("stats-refresh").onclick = async () => { await this.loadStats(); UI.toast("Statistika yangilandi ✓", "ok", 1500); };
+    // Qidirish bo'limlari (testlar, darslar, o'quvchilar)
+    const wireSearch = (inputId, listId, itemSel) => {
+      const el = document.getElementById(inputId);
+      if (el) el.oninput = () => this._filterList(inputId, listId, itemSel);
+    };
+    wireSearch("tests-search", "tests-list", ".test-card");
+    wireSearch("lessons-search", "lessons-admin-list", ".test-card");
+    wireSearch("students-search", "students-list", ".student-row");
     // Maktab ma'lumotlarini tozalash (zavuch/boshqaruv)
     const clearBtn = document.getElementById("clear-data-btn");
     if (clearBtn) clearBtn.onclick = () => this.clearSchoolData();
@@ -67,6 +75,26 @@ const Teacher = {
       this.showSection("create");
       setTimeout(() => document.getElementById("import-card").scrollIntoView({ behavior: "smooth" }), 120);
     };
+  },
+
+  _filterList(inputId, listId, itemSel) {
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+    if (!input || !list) return;
+    const q = input.value.trim().toLowerCase();
+    let shown = 0;
+    list.querySelectorAll(itemSel).forEach((el) => {
+      const match = !q || el.textContent.toLowerCase().includes(q);
+      el.style.display = match ? "" : "none";
+      if (match) shown++;
+    });
+    // "Hech narsa topilmadi" xabari
+    let empty = list.querySelector(".search-empty");
+    if (q && shown === 0) {
+      if (!empty) { empty = document.createElement("p"); empty.className = "muted search-empty"; list.appendChild(empty); }
+      empty.textContent = "🔎 Qidiruv bo'yicha hech narsa topilmadi.";
+      empty.style.display = "";
+    } else if (empty) { empty.style.display = "none"; }
   },
 
   downloadTemplate() {
@@ -664,6 +692,7 @@ const Teacher = {
       card.querySelector('[data-act="del"]').onclick = () => this.deleteTest(t.id, t.title);
       box.appendChild(card);
     });
+    this._filterList("tests-search", "tests-list", ".test-card");
   },
 
   async regenCode(id) {
@@ -1032,11 +1061,13 @@ const Teacher = {
       row.className = "student-row" + (s.blocked ? " blocked" : "");
       row.style.cursor = "default";
       const initials = ((s.first_name[0] || "") + (s.last_name[0] || "")).toUpperCase();
+      const editBtn = isAdmin ? `<button class="btn btn-secondary btn-sm" data-edit="${s.id}">✏️ Tahrirlash</button>` : "";
       const parentBtn = isAdmin ? `<button class="btn btn-secondary btn-sm" data-parent="${s.id}">👪 Ota-ona logini</button>` : "";
       const learnBtn = isAdmin ? `<button class="btn btn-secondary btn-sm" data-learn="${s.id}">${s.learn_username ? "📚 Bilim login ✔" : "📚 Bilim login"}</button>` : "";
       const blockBtn = isAdmin ? `<button class="btn btn-ghost btn-sm" data-block="${s.id}">${s.blocked ? "✅ Blokdan chiqarish" : "🚫 Bloklash"}</button>` : "";
       const learnInfo = (isAdmin && s.learn_username)
         ? `<div class="sub" style="margin-top:2px">📚 Login: <b>${UI.esc(s.learn_username)}</b>${s.learn_password ? ` • Parol: <b>${UI.esc(s.learn_password)}</b>` : ""}</div>` : "";
+      if (isAdmin) row.style.cursor = "pointer";
       row.innerHTML = `
         <div class="student-avatar">${UI.esc(initials)}</div>
         <div class="student-info">
@@ -1045,22 +1076,53 @@ const Teacher = {
           ${learnInfo}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${editBtn}
           ${learnBtn}
           ${parentBtn}
           ${blockBtn}
           ${isAdmin ? `<button class="btn btn-danger btn-sm" data-del="${s.id}">🗑️ O'chirish</button>` : ""}
         </div>
       `;
+      const editEl = row.querySelector("[data-edit]");
+      if (editEl) editEl.onclick = (e) => { e.stopPropagation(); this.editStudent(s, cls); };
       const learnEl = row.querySelector("[data-learn]");
-      if (learnEl) learnEl.onclick = () => this.setLearningLogin(s, cls);
+      if (learnEl) learnEl.onclick = (e) => { e.stopPropagation(); this.setLearningLogin(s, cls); };
       const delEl = row.querySelector("[data-del]");
-      if (delEl) delEl.onclick = () => this.deleteStudent(s.id, s, cls);
+      if (delEl) delEl.onclick = (e) => { e.stopPropagation(); this.deleteStudent(s.id, s, cls); };
       if (isAdmin) {
-        row.querySelector("[data-parent]").onclick = () => this.generateParent(s);
-        row.querySelector("[data-block]").onclick = () => this.toggleBlock(s, cls);
+        row.querySelector("[data-parent]").onclick = (e) => { e.stopPropagation(); this.generateParent(s); };
+        row.querySelector("[data-block]").onclick = (e) => { e.stopPropagation(); this.toggleBlock(s, cls); };
+        // O'quvchiga bosilganda tahrirlash ochiladi
+        row.querySelector(".student-info").onclick = () => this.editStudent(s, cls);
       }
       box.appendChild(row);
     });
+    this._filterList("students-search", "students-list", ".student-row");
+  },
+
+  editStudent(s, cls) {
+    const classes = State.meta.classes || [];
+    const opts = classes.map((c) => `<option value="${UI.esc(c)}" ${c === s.class_name ? "selected" : ""}>${UI.esc(c)}</option>`).join("");
+    UI.modal(`
+      <span class="modal-icon">✏️</span>
+      <h2 style="text-align:center">O'quvchini tahrirlash</h2>
+      <div class="field-row"><label>Ism</label><input id="es-first" class="inp" value="${UI.esc(s.first_name)}"></div>
+      <div class="field-row"><label>Familiya</label><input id="es-last" class="inp" value="${UI.esc(s.last_name)}"></div>
+      <div class="field-row"><label>Sinf (almashtirish)</label><select id="es-class" class="inp">${opts}</select></div>
+      <div style="text-align:center;margin-top:12px"><button class="btn btn-success" id="es-save">💾 Saqlash</button></div>
+    `);
+    document.getElementById("es-save").onclick = async () => {
+      const first = document.getElementById("es-first").value.trim();
+      const last = document.getElementById("es-last").value.trim();
+      const cl = document.getElementById("es-class").value;
+      if (!first || !last) return UI.toast("Ism va familiyani kiriting", "err");
+      const res = await API.put(`/api/students/${s.id}`, { first_name: first, last_name: last, class_name: cl });
+      if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+      UI.closeModal();
+      UI.toast(cl !== s.class_name ? `O'quvchi ${cl} sinfga o'tkazildi ✔` : "O'zgartirildi ✔", "ok");
+      // Agar sinf o'zgargan bo'lsa, joriy sinf ro'yxatidan yo'qoladi
+      this.loadStudents(cls);
+    };
   },
 
   async toggleBlock(s, cls) {
@@ -1237,6 +1299,7 @@ const Teacher = {
       if (editBtn) editBtn.onclick = () => this.openLessonEdit(l);
       box.appendChild(card);
     });
+    this._filterList("lessons-search", "lessons-admin-list", ".test-card");
   },
 
   /* Darsdan keyingi test uchun savol joylari */
@@ -1460,6 +1523,7 @@ const Teacher = {
       const badgeCls = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
       const durTxt = s.total_duration_seconds > 0 ? ` • ⏱ jami ${this.fmtDurLong(s.total_duration_seconds)}` : "";
       const monthTxt = s.month_duration_seconds > 0 ? ` • 📅 shu oy ${this.fmtDurLong(s.month_duration_seconds)}` : "";
+      const faollikTxt = (s.faollik_pct != null) ? ` • 📈 faollik ${s.faollik_pct}% (${s.done_lessons}/${s.total_lessons})` : "";
       const isAdmin = State.teacher && State.teacher.is_admin; // zavuch/boshqaruv
       const delBtn = isAdmin ? `<button class="btn btn-danger btn-sm" data-del="${s.id}">🗑️</button>` : "";
       const row = document.createElement("div");
@@ -1468,7 +1532,7 @@ const Teacher = {
         <div class="rank-badge ${badgeCls}">${medal}</div>
         <div class="student-info">
           <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${this.bahoBadgeHtml(s.baho, "Oylik baho")}${isAll && s.class_name ? ` <span class="role-tag role-teacher">${UI.esc(s.class_name)}</span>` : ""}</div>
-          <div class="sub">🎬 ${s.videos} video • 🎧 ${s.audios} audio • 📖 ${s.texts} matn${durTxt}${monthTxt}</div>
+          <div class="sub">🎬 ${s.videos} video • 🎧 ${s.audios} audio • 📖 ${s.texts} matn${faollikTxt}${durTxt}${monthTxt}</div>
         </div>
         <div class="row-tail"><span class="coin-badge">🪙 ${s.coins}</span>${delBtn}</div>`;
       row.querySelector(".student-info").onclick = () => this.showLearningDetail(s.id);
