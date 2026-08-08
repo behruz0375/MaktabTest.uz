@@ -1125,6 +1125,9 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 .daily-time-row .d-date { font-weight: 700; }
 .daily-time-row .d-secs { font-weight: 800; color: var(--primary-2); }
 .daily-time-row.today { border-color: var(--success-1); }
+.my-time-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; }
+.my-time-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.my-time-head b { font-size: 1.05rem; }
 .text-reader img { max-width: 100%; border-radius: var(--radius-sm); margin: 12px 0; display: block; }
 
 /* Statistika / dashboard */

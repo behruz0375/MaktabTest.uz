@@ -27,8 +27,12 @@ const Learning = {
     document.getElementById("lr-coins").textContent = payload.student.coins || 0;
     this._totalSeconds = payload.student.total_duration_seconds || 0;
     this._updateTimeBadge(this._totalSeconds);
+    this.daily = payload.daily || [];
+    this.todaySeconds = payload.student.today_duration_seconds || 0;
+    this.monthSeconds = payload.student.month_duration_seconds || 0;
     this.currentSubject = null;
     this.renderSubjects();
+    this.renderMyDaily();
     Games.renderGrid(document.getElementById("games-grid"));
     UI.showView("view-learning");
   },
@@ -46,11 +50,49 @@ const Learning = {
     if (el) el.textContent = this._fmtDur(sec);
   },
 
+  _fmtDurLong(sec) {
+    sec = Math.round(sec || 0);
+    if (sec < 60) return sec + " s";
+    const m = Math.floor(sec / 60), s = sec % 60;
+    if (m < 60) return m + " daq" + (s ? " " + s + "s" : "");
+    const h = Math.floor(m / 60), rm = m % 60;
+    return h + " soat" + (rm ? " " + rm + " daq" : "");
+  },
+  _todayStr() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); },
+  _dateLabel(dateStr) {
+    const today = this._todayStr();
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    const yStr = y.getFullYear() + "-" + String(y.getMonth() + 1).padStart(2, "0") + "-" + String(y.getDate()).padStart(2, "0");
+    if (dateStr === today) return "Bugun";
+    if (dateStr === yStr) return "Kecha";
+    return dateStr;
+  },
+  /* O'quvchining o'ziga: kunlik/oylik sarflagan vaqti */
+  renderMyDaily() {
+    const box = document.getElementById("my-daily-time");
+    if (!box) return;
+    const daily = this.daily || [];
+    const rows = daily.length
+      ? daily.map((d) => `<div class="daily-time-row${d.date === this._todayStr() ? " today" : ""}">
+          <span class="d-date">${this._dateLabel(d.date)} <span class="muted" style="font-size:.8rem">${d.date}</span></span>
+          <span class="d-secs">⏱ ${this._fmtDurLong(d.seconds)}</span></div>`).join("")
+      : '<p class="muted" style="margin:6px 0">Hali vaqt yozilmagan. Video/audio ko\'rsangiz vaqtingiz shu yerda ko\'rinadi.</p>';
+    box.innerHTML = `
+      <div class="my-time-card">
+        <div class="my-time-head">
+          <b>⏱ Bilim olishga sarflagan vaqtingiz</b>
+          <span class="muted">Bugun: <b>${this._fmtDurLong(this.todaySeconds)}</b> • Shu oy: <b>${this._fmtDurLong(this.monthSeconds)}</b> • Jami: <b>${this._fmtDurLong(this._totalSeconds)}</b></span>
+        </div>
+        <div class="daily-time-list">${rows}</div>
+      </div>`;
+  },
+
   /* Avval FANLAR ro'yxati */
   renderSubjects() {
     this.currentSubject = null;
     const grid = document.getElementById("subjects-grid");
     document.getElementById("subject-detail").style.display = "none";
+    const dt = document.getElementById("my-daily-time"); if (dt) dt.style.display = "";
     grid.style.display = "";
     const bySubj = {};
     this.lessons.forEach((l) => { (bySubj[l.subject] = bySubj[l.subject] || []).push(l); });
@@ -86,6 +128,7 @@ const Learning = {
   openSubject(subj) {
     this.currentSubject = subj;
     document.getElementById("subjects-grid").style.display = "none";
+    const dt = document.getElementById("my-daily-time"); if (dt) dt.style.display = "none";
     document.getElementById("subject-detail").style.display = "";
     document.getElementById("subj-title").textContent = "📚 " + subj;
     const lessons = this.lessons.filter((l) => l.subject === subj);

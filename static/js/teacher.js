@@ -1043,10 +1043,11 @@ const Teacher = {
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${parentBtn}
           ${blockBtn}
-          <button class="btn btn-danger btn-sm" data-del="${s.id}">🗑️ O'chirish</button>
+          ${isAdmin ? `<button class="btn btn-danger btn-sm" data-del="${s.id}">🗑️ O'chirish</button>` : ""}
         </div>
       `;
-      row.querySelector("[data-del]").onclick = () => this.deleteStudent(s.id, s, cls);
+      const delEl = row.querySelector("[data-del]");
+      if (delEl) delEl.onclick = () => this.deleteStudent(s.id, s, cls);
       if (isAdmin) {
         row.querySelector("[data-parent]").onclick = () => this.generateParent(s);
         row.querySelector("[data-block]").onclick = () => this.toggleBlock(s, cls);
@@ -1125,7 +1126,13 @@ const Teacher = {
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px">
         <button class="btn btn-ghost" id="cd-no">Bekor qilish</button>
         <button class="btn btn-danger" id="cd-yes">🧹 Belgilanganlarни tozalash</button>
+      </div>
+      <div style="margin-top:18px;padding-top:14px;border-top:2px dashed var(--danger-1)">
+        <p style="text-align:center;color:var(--danger-1);font-weight:800;margin-bottom:4px">☢️ Maktab haqida HAMMA ma'lumotni tozalash</p>
+        <p class="muted" style="text-align:center;font-size:.84rem">O'quvchilar, testlar, natijalar, darslar, coinlar va vaqtlar — <b>hammasi</b> o'chadi.<br>O'qituvchi/zavuch hisoblari (login/parol) saqlanadi.</p>
+        <div style="text-align:center;margin-top:8px"><button class="btn btn-danger" id="cd-all">☢️ Hamma ma'lumotni tozalash</button></div>
       </div>`, { large: true });
+    document.getElementById("cd-all").onclick = () => this._clearAllData();
     document.getElementById("cd-no").onclick = () => UI.closeModal();
     document.getElementById("cd-yes").onclick = async () => {
       const targets = Array.from(document.querySelectorAll(".cd-chk:checked")).map((c) => c.value);
@@ -1143,6 +1150,18 @@ const Teacher = {
       UI.toast("Tozalandi: " + (parts.join(", ") || "tayyor") + " ✓", "ok", 5000);
       if (this.currentSection === "tests") this.loadTests();
     };
+  },
+
+  _clearAllData() {
+    this.confirm("HAMMA ma'lumotni tozalash",
+      "Maktabning BARCHA o'quvchilari, testlari, natijalari, darslari, coinlari va vaqtlari butunlay o'chiriladi. Faqat o'qituvchi/zavuch hisoblari qoladi. Bu amalni orqaga qaytarib bo'lmaydi!",
+      async () => {
+        const res = await API.post("/api/school/clear-data", { targets: ["all"] });
+        if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+        const r = res.report || {};
+        UI.toast(`Tozalandi: ${r.students_deleted || 0} o'quvchi, ${r.tests_deleted || 0} test, ${r.lessons_deleted || 0} dars, ${r.results_deleted || 0} natija ✓`, "ok", 6000);
+        if (this.currentSection === "tests") this.loadTests();
+      });
   },
 
   /* =============== ISH VAQTI + XODIM LOGIN/PAROL (boshqaruv) =============== */
@@ -1434,6 +1453,8 @@ const Teacher = {
       const badgeCls = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
       const durTxt = s.total_duration_seconds > 0 ? ` • ⏱ jami ${this.fmtDurLong(s.total_duration_seconds)}` : "";
       const monthTxt = s.month_duration_seconds > 0 ? ` • 📅 shu oy ${this.fmtDurLong(s.month_duration_seconds)}` : "";
+      const isAdmin = State.teacher && State.teacher.is_admin; // zavuch/boshqaruv
+      const delBtn = isAdmin ? `<button class="btn btn-danger btn-sm" data-del="${s.id}">🗑️</button>` : "";
       const row = document.createElement("div");
       row.className = "student-row" + (rank === 1 && s.coins > 0 ? " top1" : "");
       row.innerHTML = `
@@ -1442,9 +1463,19 @@ const Teacher = {
           <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${this.bahoBadgeHtml(s.baho, "Oylik baho")}${isAll && s.class_name ? ` <span class="role-tag role-teacher">${UI.esc(s.class_name)}</span>` : ""}</div>
           <div class="sub">🎬 ${s.videos} video • 🎧 ${s.audios} audio • 📖 ${s.texts} matn${durTxt}${monthTxt}</div>
         </div>
-        <span class="coin-badge">🪙 ${s.coins}</span>`;
-      row.onclick = () => this.showLearningDetail(s.id);
+        <div class="row-tail"><span class="coin-badge">🪙 ${s.coins}</span>${delBtn}</div>`;
+      row.querySelector(".student-info").onclick = () => this.showLearningDetail(s.id);
+      const db = row.querySelector("[data-del]");
+      if (db) db.onclick = (e) => { e.stopPropagation(); this.deleteStudentFromLearning(s, cls); };
       box.appendChild(row);
+    });
+  },
+
+  deleteStudentFromLearning(s, cls) {
+    this.confirm("O'quvchini o'chirish", `${s.last_name} ${s.first_name} va uning barcha natija/faoliyati o'chiriladi.`, async () => {
+      const res = await API.del(`/api/students/${s.id}`);
+      if (res.ok) { UI.toast("O'quvchi o'chirildi", "ok"); this.loadLearning(cls); }
+      else UI.toast(res.error || "Xatolik", "err");
     });
   },
 

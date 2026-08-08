@@ -52,6 +52,15 @@ app.config.update(
 db.init_db()
 
 
+@app.after_request
+def _no_cache_api(resp):
+    """API javoblari keshlanmasin (eski coin/natija ko'rinib qolmasin)."""
+    if request.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 # --------------------------------------------------------------------------
 # Yordamchi funksiyalar
 # --------------------------------------------------------------------------
@@ -405,9 +414,18 @@ def list_tests():
         # O'qituvchi faqat o'zi qo'shgan testlarni ko'radi; zavuch/owner — hammasini
         mine_clause, mine_params = "", []
         if session.get("role", "teacher") == "teacher":
-            # O'zi qo'shgan testlar + egasi belgilanmagan eski testlar
-            mine_clause = " AND (created_by = ? OR created_by IS NULL) "
+            allowed = get_teacher_classes(conn, session["teacher_id"])
+            conds = ["created_by = ?"]
             mine_params = [session.get("teacher_id")]
+            if allowed:
+                # Zavuch biriktirgan sinflar testlarini ham boshqaradi
+                ph = ",".join("?" for _ in allowed)
+                conds.append("class_name IN (" + ph + ")")
+                mine_params += allowed
+            else:
+                # Cheklov yo'q: egasi belgilanmagan eski testlar ham ko'rinsin
+                conds.append("created_by IS NULL")
+            mine_clause = " AND (" + " OR ".join(conds) + ") "
         rows = conn.execute("SELECT * FROM tests WHERE 1=1" + sc_ + mine_clause + " ORDER BY created_at DESC, id DESC",
                             sp_ + mine_params).fetchall()
         out = []
@@ -699,10 +717,21 @@ def add_student():
 
 
 @app.route("/api/students/<int:student_id>", methods=["DELETE"])
-@teacher_required
+@role_required("owner", "zavuch")
 def delete_student(student_id):
+    """O'quvchini va unga bog'liq ma'lumotlarni o'chiradi (faqat zavuch/boshqaruv)."""
+    sid = scope_school_id()
     conn = get_conn()
     try:
+        s = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+        if not s:
+            return jsonify({"ok": False, "error": "O'quvchi topilmadi"}), 404
+        if sid is not None and s["school_id"] != sid:
+            return jsonify({"ok": False, "error": "Bu boshqa maktab o'quvchisi"}), 403
+        conn.execute("DELETE FROM learning_daily WHERE student_id = ?", (student_id,))
+        conn.execute("DELETE FROM learning_activity WHERE student_id = ?", (student_id,))
+        conn.execute("DELETE FROM retake_grants WHERE student_id = ?", (student_id,))
+        conn.execute("DELETE FROM submissions WHERE student_id = ?", (student_id,))
         conn.execute("DELETE FROM students WHERE id = ?", (student_id,))
         conn.commit()
         return jsonify({"ok": True})
@@ -1461,16 +1490,16 @@ def learning_enter():
             return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
         lessons = conn.execute("SELECT * FROM lessons WHERE class_name = ? AND school_id = ? ORDER BY created_at DESC, id DESC", (class_name, school_id)).fetchall()
         done = [r["lesson_id"] for r in conn.execute("SELECT DISTINCT lesson_id FROM learning_activity WHERE student_id = ? AND completed = 1", (student["id"],)).fetchall()]
-        total_dur = conn.execute("SELECT COALESCE(SUM(duration_seconds),0) AS d FROM learning_activity WHERE student_id = ?", (student["id"],)).fetchone()["d"]
-        ym = datetime.now().strftime("%Y-%m")
-        month_dur = conn.execute("SELECT COALESCE(SUM(duration_seconds),0) AS d FROM learning_activity WHERE student_id = ? AND substr(completed_at,1,7) = ?", (student["id"], ym)).fetchone()["d"]
+        bd = time_breakdown(conn, student["id"])
         return jsonify({
             "ok": True,
             "student": {"id": student["id"], "first_name": student["first_name"], "last_name": student["last_name"],
                         "class_name": student["class_name"], "coins": student["coins"] or 0,
-                        "total_duration_seconds": total_dur, "month_duration_seconds": month_dur},
+                        "total_duration_seconds": bd["total_seconds"], "month_duration_seconds": bd["month_seconds"],
+                        "today_duration_seconds": bd["today_seconds"]},
             "lessons": [_lesson_public(l, conn) for l in lessons],
             "completed": done,
+            "daily": bd["daily"],
         })
     finally:
         conn.close()
@@ -1812,12 +1841,17 @@ def parent_activity():
             if (a["completed_at"] or "")[:7] == ym:
                 month_dur += d
         mpct = monthly_pct(conn, sid)
+        # Umumiy (eng yaxshi) baho — shu oy test bo'lmasa ham baho ko'rinsin
+        best_row = conn.execute("SELECT MAX(percentage) AS p FROM submissions WHERE student_id = ? AND status = 'completed'", (sid,)).fetchone()
+        best_pct = best_row["p"] if best_row else None
         bd = time_breakdown(conn, sid)
         return jsonify({
             "ok": True,
             "student": {"first_name": s["first_name"], "last_name": s["last_name"],
                         "class_name": s["class_name"], "coins": s["coins"] or 0,
                         "monthly_pct": mpct, "monthly_baho": baho_from_pct(mpct),
+                        "overall_pct": round(best_pct, 1) if best_pct is not None else None,
+                        "overall_baho": baho_from_pct(best_pct),
                         "videos": counts["video"], "audios": counts["audio"], "texts": counts["text"],
                         "tests_count": len(tests),
                         "total_duration_seconds": bd["total_seconds"] or total_dur,
@@ -2119,6 +2153,30 @@ def clear_school_data():
     conn = get_conn()
     try:
         report = {}
+        if "all" in targets:
+            # Maktab haqidagi HAMMA ma'lumot (o'qituvchi/zavuch hisoblaridan tashqari)
+            report["tests_deleted"] = conn.execute("SELECT COUNT(*) AS c FROM tests WHERE school_id = ?", (sid,)).fetchone()["c"]
+            report["results_deleted"] = conn.execute("SELECT COUNT(*) AS c FROM submissions WHERE " + sub_of_school, (sid,)).fetchone()["c"]
+            report["students_deleted"] = conn.execute("SELECT COUNT(*) AS c FROM students WHERE school_id = ?", (sid,)).fetchone()["c"]
+            report["lessons_deleted"] = conn.execute("SELECT COUNT(*) AS c FROM lessons WHERE school_id = ?", (sid,)).fetchone()["c"]
+            conn.execute("DELETE FROM retake_grants WHERE " + sub_of_school, (sid,))
+            conn.execute("DELETE FROM retake_grants WHERE " + stu_of_school, (sid,))
+            conn.execute("DELETE FROM learning_daily WHERE " + stu_of_school, (sid,))
+            conn.execute("DELETE FROM learning_activity WHERE " + stu_of_school, (sid,))
+            conn.execute("DELETE FROM submissions WHERE " + stu_of_school, (sid,))
+            conn.execute("DELETE FROM submissions WHERE " + sub_of_school, (sid,))
+            conn.execute("DELETE FROM questions WHERE " + sub_of_school, (sid,))
+            # Media fayllarni o'chiramiz
+            for l in conn.execute("SELECT file_name, image_name FROM lessons WHERE school_id = ?", (sid,)).fetchall():
+                for fn in (l["file_name"], l["image_name"]):
+                    if fn:
+                        try: os.remove(os.path.join(UPLOAD_DIR, fn))
+                        except OSError: pass
+            conn.execute("DELETE FROM lessons WHERE school_id = ?", (sid,))
+            conn.execute("DELETE FROM tests WHERE school_id = ?", (sid,))
+            conn.execute("DELETE FROM students WHERE school_id = ?", (sid,))
+            conn.commit()
+            return jsonify({"ok": True, "report": report, "all": True})
         if "tests" in targets:
             report["tests_deleted"] = conn.execute("SELECT COUNT(*) AS c FROM tests WHERE school_id = ?", (sid,)).fetchone()["c"]
             report["results_deleted"] = conn.execute("SELECT COUNT(*) AS c FROM submissions WHERE " + sub_of_school, (sid,)).fetchone()["c"]

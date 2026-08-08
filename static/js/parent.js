@@ -5,6 +5,12 @@ const Parent = {
       await API.post("/api/parent/logout");
       UI.showView("view-login");
     };
+    const rf = document.getElementById("pr-refresh");
+    if (rf) rf.onclick = async () => {
+      const res = await API.get("/api/parent/activity");
+      if (res.ok) { this.render(res); UI.toast("Yangilandi ✓", "ok", 1500); }
+      else UI.toast(res.error || "Xatolik", "err");
+    };
   },
 
   fmtDur(sec) {
@@ -47,8 +53,12 @@ const Parent = {
       `${st.first_name} ${st.last_name} • ${st.class_name}`;
     document.getElementById("pr-coins").textContent = st.coins || 0;
 
-    const mbaho = st.monthly_baho;
+    // Shu oylik baho; agar shu oy test bo'lmasa — umumiy (eng yaxshi) baho
+    const mbaho = st.monthly_baho || st.overall_baho;
+    const bahoIsMonthly = !!st.monthly_baho;
     const bahoBadge = mbaho ? `<span style="display:inline-block;background:${this.bahoCls(mbaho)};color:#fff;border-radius:8px;padding:0 10px;font-weight:900;margin-left:6px">${mbaho}</span>` : "";
+    const bahoLabel = bahoIsMonthly ? "📅 Shu oy o'zlashtirish (baho)" : (st.overall_baho ? "📊 Umumiy o'zlashtirish (baho)" : "📅 Shu oy o'zlashtirish (baho)");
+    const pctShown = bahoIsMonthly ? st.monthly_pct : (st.overall_baho ? st.overall_pct : st.monthly_pct);
     const daily = res.daily || [];
     const dailyHtml = daily.length
       ? `<h3 style="margin:6px 0 8px">📆 Kunlik bilim olish vaqti</h3>
@@ -60,7 +70,7 @@ const Parent = {
       : "";
     document.getElementById("parent-summary").innerHTML = `
       <div class="stat-tiles">
-        <div class="stat-tile"><div class="num">${st.monthly_pct != null ? st.monthly_pct + "%" : "—"} ${bahoBadge}</div><div class="lbl">📅 Shu oy o'zlashtirish (baho)</div></div>
+        <div class="stat-tile"><div class="num">${pctShown != null ? pctShown + "%" : "—"} ${bahoBadge}</div><div class="lbl">${bahoLabel}</div></div>
         <div class="stat-tile"><div class="num">⏱ ${this.fmtDurLong(st.today_duration_seconds)}</div><div class="lbl">Bugun bilim olgan vaqt</div></div>
         <div class="stat-tile"><div class="num">🗓 ${this.fmtDurLong(st.month_duration_seconds)}</div><div class="lbl">Shu oy jami vaqt</div></div>
         <div class="stat-tile"><div class="num">🪙 ${st.coins || 0}</div><div class="lbl">Coinlar</div></div>
