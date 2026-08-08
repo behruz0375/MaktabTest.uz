@@ -41,27 +41,37 @@
             <button type="button" class="mode-btn active" data-mode="test">📝 Test yechish</button>
             <button type="button" class="mode-btn" data-mode="learn">📚 Bilim olish</button>
           </div>
-          <div class="field">
-            <input name="first_name" required placeholder=" ">
-            <label>Ism</label>
+          <!-- Test yechish: ism/familiya/sinf/kod -->
+          <div id="student-test-fields">
+            <div class="field">
+              <input name="first_name" placeholder=" ">
+              <label>Ism</label>
+            </div>
+            <div class="field">
+              <input name="last_name" placeholder=" ">
+              <label>Familiya</label>
+            </div>
+            <div class="field">
+              <select name="class_name">
+                <option value="" disabled selected>Sinfingizni tanlang</option>
+              </select>
+            </div>
+            <div class="field" id="student-code-field">
+              <input name="code" inputmode="numeric" maxlength="6" placeholder=" ">
+              <label>Kirish kodi</label>
+            </div>
           </div>
-          <div class="field">
-            <input name="last_name" required placeholder=" ">
-            <label>Familiya</label>
-          </div>
-          <div class="field" id="student-school-field" style="display:none">
-            <select name="school_id">
-              <option value="" disabled selected>Maktabingizni tanlang</option>
-            </select>
-          </div>
-          <div class="field">
-            <select name="class_name" required>
-              <option value="" disabled selected>Sinfingizni tanlang</option>
-            </select>
-          </div>
-          <div class="field" id="student-code-field">
-            <input name="code" inputmode="numeric" maxlength="6" placeholder=" ">
-            <label>Kirish kodi</label>
+          <!-- Bilim olish: login/parol (zavuch beradi) -->
+          <div id="student-learn-fields" style="display:none">
+            <div class="field">
+              <input name="learn_username" placeholder=" ">
+              <label>Bilim olish logini</label>
+            </div>
+            <div class="field">
+              <input name="learn_password" type="password" placeholder=" ">
+              <label>Parol</label>
+            </div>
+            <p class="hint">Login va parolni o'qituvchi/zavuchdan oling.</p>
           </div>
           <button type="submit" class="btn btn-primary btn-block" id="student-submit-btn">Testga kirish →</button>
           <div class="form-error" data-for="student"></div>

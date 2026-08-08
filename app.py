@@ -674,10 +674,13 @@ def list_students():
             ).fetchall()
         else:
             rows = conn.execute("SELECT * FROM students WHERE 1=1" + sc_ + " ORDER BY class_name, last_name", sp_).fetchall()
+        is_admin = session.get("role") in ("owner", "zavuch", "director")
         students = [{
             "id": r["id"], "first_name": r["first_name"], "last_name": r["last_name"],
             "class_name": r["class_name"], "created_at": r["created_at"],
             "blocked": bool(r["blocked"]),
+            "learn_username": r["learn_username"] if is_admin else None,
+            "learn_password": r["learn_password_plain"] if is_admin else None,
         } for r in rows]
         return jsonify({"ok": True, "students": students})
     finally:
@@ -1457,42 +1460,36 @@ def lesson_media(lesson_id):
 
 @app.route("/api/learning/enter", methods=["POST"])
 def learning_enter():
+    """Bilim olishga o'quvchi LOGIN/PAROL bilan kiradi (zavuch/boshqaruv beradi)."""
     data = request.get_json(force=True, silent=True) or {}
-    first = norm(data.get("first_name"))
-    last = norm(data.get("last_name"))
-    class_name = norm(data.get("class_name"))
-    try:
-        school_id = int(data.get("school_id"))
-    except (TypeError, ValueError):
-        school_id = None
-    if not first or not last:
-        return jsonify({"ok": False, "error": "Ism va familiyangizni kiriting"}), 400
-    if class_name not in CLASSES:
-        return jsonify({"ok": False, "error": "Sinfingizni tanlang"}), 400
+    username = norm(data.get("username"))
+    password = data.get("password") or ""
+    if not username or not password:
+        return jsonify({"ok": False, "error": "Login va parolni kiriting"}), 400
     err = check_work_hours()
     if err:
         return err
     conn = get_conn()
     try:
-        sch_row = conn.execute("SELECT id, suspended FROM schools WHERE id=?", (school_id,)).fetchone() if school_id else None
-        if not sch_row:
-            return jsonify({"ok": False, "error": "Maktabingizni tanlang"}), 400
-        if sch_row["suspended"]:
-            return jsonify({"ok": False, "error": "Bu maktab tizimi vaqtinchalik to'xtatilgan. Zavuch bilan bog'laning."}), 403
-        student = conn.execute(
-            "SELECT * FROM students WHERE lower(first_name)=lower(?) AND lower(last_name)=lower(?) AND class_name=? AND school_id IS ?",
-            (first, last, class_name, school_id),
-        ).fetchone()
-        # Faqat maktab ro'yxatidagi o'quvchi kira oladi (boshqa maktabga o'ta olmaydi)
-        if not student:
-            return jsonify({"ok": False, "error": "Siz bu maktab ro'yxatida yo'qsiz. O'qituvchingiz sizni ro'yxatga qo'shishi kerak."}), 403
+        student = conn.execute("SELECT * FROM students WHERE learn_username = ?", (username,)).fetchone()
+        if not student or not student["learn_password_hash"] or not check_password_hash(student["learn_password_hash"], password):
+            return jsonify({"ok": False, "error": "Login yoki parol noto'g'ri"}), 401
         if student["blocked"]:
             return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
+        school_id = student["school_id"]
+        school_name = None
+        if school_id:
+            sch = conn.execute("SELECT name, suspended FROM schools WHERE id=?", (school_id,)).fetchone()
+            if sch and sch["suspended"]:
+                return jsonify({"ok": False, "error": "Bu maktab tizimi vaqtinchalik to'xtatilgan. Zavuch bilan bog'laning."}), 403
+            school_name = sch["name"] if sch else None
+        class_name = student["class_name"]
         lessons = conn.execute("SELECT * FROM lessons WHERE class_name = ? AND school_id = ? ORDER BY created_at DESC, id DESC", (class_name, school_id)).fetchall()
         done = [r["lesson_id"] for r in conn.execute("SELECT DISTINCT lesson_id FROM learning_activity WHERE student_id = ? AND completed = 1", (student["id"],)).fetchall()]
         bd = time_breakdown(conn, student["id"])
         return jsonify({
             "ok": True,
+            "school_name": school_name,
             "student": {"id": student["id"], "first_name": student["first_name"], "last_name": student["last_name"],
                         "class_name": student["class_name"], "coins": student["coins"] or 0,
                         "total_duration_seconds": bd["total_seconds"], "month_duration_seconds": bd["month_seconds"],
@@ -1764,6 +1761,36 @@ def set_parent(student_id):
         if dup:
             return jsonify({"ok": False, "error": "Bu login boshqa ota-onaga berilgan"}), 400
         conn.execute("UPDATE students SET parent_username = ?, parent_password_hash = ?, parent_password_plain = ? WHERE id = ?",
+                     (username, generate_password_hash(password), password, student_id))
+        conn.commit()
+        return jsonify({"ok": True, "username": username, "password": password})
+    finally:
+        conn.close()
+
+
+@app.route("/api/students/<int:student_id>/learning-login", methods=["POST"])
+@role_required("owner", "zavuch")
+def set_learning_login(student_id):
+    """O'quvchining BILIM OLISH login/parolini o'rnatadi/yangilaydi (zavuch/boshqaruv)."""
+    data = request.get_json(force=True, silent=True) or {}
+    username = norm(data.get("username"))
+    password = data.get("password") or ""
+    if not username:
+        return jsonify({"ok": False, "error": "Login kiriting"}), 400
+    if len(password) < 4:
+        return jsonify({"ok": False, "error": "Parol kamida 4 ta belgi bo'lsin"}), 400
+    sid = scope_school_id()
+    conn = get_conn()
+    try:
+        s = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+        if not s:
+            return jsonify({"ok": False, "error": "O'quvchi topilmadi"}), 404
+        if sid is not None and s["school_id"] != sid:
+            return jsonify({"ok": False, "error": "Bu boshqa maktab o'quvchisi"}), 403
+        dup = conn.execute("SELECT 1 FROM students WHERE learn_username = ? AND id != ?", (username, student_id)).fetchone()
+        if dup:
+            return jsonify({"ok": False, "error": "Bu login boshqa o'quvchiga berilgan"}), 400
+        conn.execute("UPDATE students SET learn_username = ?, learn_password_hash = ?, learn_password_plain = ? WHERE id = ?",
                      (username, generate_password_hash(password), password, student_id))
         conn.commit()
         return jsonify({"ok": True, "username": username, "password": password})

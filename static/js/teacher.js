@@ -1033,19 +1033,26 @@ const Teacher = {
       row.style.cursor = "default";
       const initials = ((s.first_name[0] || "") + (s.last_name[0] || "")).toUpperCase();
       const parentBtn = isAdmin ? `<button class="btn btn-secondary btn-sm" data-parent="${s.id}">👪 Ota-ona logini</button>` : "";
+      const learnBtn = isAdmin ? `<button class="btn btn-secondary btn-sm" data-learn="${s.id}">${s.learn_username ? "📚 Bilim login ✔" : "📚 Bilim login"}</button>` : "";
       const blockBtn = isAdmin ? `<button class="btn btn-ghost btn-sm" data-block="${s.id}">${s.blocked ? "✅ Blokdan chiqarish" : "🚫 Bloklash"}</button>` : "";
+      const learnInfo = (isAdmin && s.learn_username)
+        ? `<div class="sub" style="margin-top:2px">📚 Login: <b>${UI.esc(s.learn_username)}</b>${s.learn_password ? ` • Parol: <b>${UI.esc(s.learn_password)}</b>` : ""}</div>` : "";
       row.innerHTML = `
         <div class="student-avatar">${UI.esc(initials)}</div>
         <div class="student-info">
           <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${s.blocked ? ' <span class="pill-blocked">bloklangan</span>' : ""}</div>
           <div class="sub">${UI.esc(s.class_name)}</div>
+          ${learnInfo}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${learnBtn}
           ${parentBtn}
           ${blockBtn}
           ${isAdmin ? `<button class="btn btn-danger btn-sm" data-del="${s.id}">🗑️ O'chirish</button>` : ""}
         </div>
       `;
+      const learnEl = row.querySelector("[data-learn]");
+      if (learnEl) learnEl.onclick = () => this.setLearningLogin(s, cls);
       const delEl = row.querySelector("[data-del]");
       if (delEl) delEl.onclick = () => this.deleteStudent(s.id, s, cls);
       if (isAdmin) {
@@ -1647,6 +1654,29 @@ const Teacher = {
       UI.closeModal();
       UI.toast("Ota-ona logini saqlandi ✔", "ok");
       if (this.currentParClass) this.loadParents(this.currentParClass);
+    };
+  },
+
+  /* =============== BILIM OLISH LOGINI (o'quvchi uchun) =============== */
+  setLearningLogin(s, cls) {
+    UI.modal(`
+      <span class="modal-icon">📚</span>
+      <h2 style="text-align:center">Bilim olish login/paroli</h2>
+      <p class="muted" style="text-align:center">${UI.esc(s.last_name)} ${UI.esc(s.first_name)} shu login/parol bilan "Bilim olish"ga kiradi.</p>
+      <div class="field-row"><label>Login</label><input id="ll-user" class="inp" value="${UI.esc(s.learn_username || "")}" placeholder="masalan: aziza5"></div>
+      <div class="field-row"><label>Parol</label><input id="ll-pass" class="inp" type="text" placeholder="kamida 4 ta belgi"></div>
+      <div style="text-align:center;margin-top:10px"><button class="btn btn-success" id="ll-save">💾 Saqlash</button></div>
+    `);
+    document.getElementById("ll-save").onclick = async () => {
+      const u = document.getElementById("ll-user").value.trim();
+      const p = document.getElementById("ll-pass").value;
+      if (!u) return UI.toast("Login kiriting", "err");
+      if (p.length < 4) return UI.toast("Parol kamida 4 ta belgi bo'lsin", "err");
+      const res = await API.post(`/api/students/${s.id}/learning-login`, { username: u, password: p });
+      if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+      UI.closeModal();
+      UI.toast("Bilim olish logini saqlandi ✔", "ok");
+      this.loadStudents(cls);
     };
   },
 

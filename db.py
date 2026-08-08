@@ -213,6 +213,10 @@ def init_db():
         _ensure_column(conn, "tests", "created_by", "INTEGER")
         # Dars (bilim olish) — kim qo'shgani
         _ensure_column(conn, "lessons", "created_by", "INTEGER")
+        # Bilim olish uchun o'quvchi login/paroli (zavuch/boshqaruv beradi)
+        _ensure_column(conn, "students", "learn_username", "TEXT")
+        _ensure_column(conn, "students", "learn_password_hash", "TEXT")
+        _ensure_column(conn, "students", "learn_password_plain", "TEXT")
         # Standart hisob (egasi/owner) yaratamiz (agar hech kim bo'lmasa)
         cur = conn.execute("SELECT COUNT(*) AS c FROM teachers")
         if cur.fetchone()["c"] == 0:
