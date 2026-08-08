@@ -25,7 +25,8 @@ const Learning = {
     document.getElementById("lr-student").textContent =
       `${payload.student.first_name} ${payload.student.last_name} • ${payload.student.class_name}${payload.school_name ? " • 🏫 " + payload.school_name : ""}`;
     document.getElementById("lr-coins").textContent = payload.student.coins || 0;
-    this._updateTimeBadge(payload.student.total_duration_seconds || 0);
+    this._totalSeconds = payload.student.total_duration_seconds || 0;
+    this._updateTimeBadge(this._totalSeconds);
     this.currentSubject = null;
     this.renderSubjects();
     Games.renderGrid(document.getElementById("games-grid"));
@@ -150,6 +151,9 @@ const Learning = {
       this._watchTotal++;
       const c = document.getElementById("watch-clock");
       if (c) c.textContent = "⏱ " + this._fmtClock(this._watchTotal);
+      // Tepadagi umumiy vaqtni ham jonli oshirib boramiz
+      this._totalSeconds = (this._totalSeconds || 0) + 1;
+      this._updateTimeBadge(this._totalSeconds);
       if (this._watchUnflushed >= 10) this._flushWatch();  // har 10s da serverga yozamiz
     }, 1000);
   },
@@ -293,7 +297,7 @@ const Learning = {
         msg = `🪙 +${res.coins} coin!`;
         this.student.coins = res.total_coins;
         document.getElementById("lr-coins").textContent = res.total_coins;
-        if (res.total_duration_seconds != null) this._updateTimeBadge(res.total_duration_seconds);
+        if (res.total_duration_seconds != null) { this._totalSeconds = res.total_duration_seconds; this._updateTimeBadge(this._totalSeconds); }
         Fireworks.start(2500);
       }
     }
