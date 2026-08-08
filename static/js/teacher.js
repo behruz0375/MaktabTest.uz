@@ -37,6 +37,11 @@ const Teacher = {
     document.getElementById("lrn-class").onchange = (e) => this.loadLearning(e.target.value);
     document.getElementById("lrn-subject").onchange = () => { if (this.currentLrnClass) this.loadLearning(this.currentLrnClass); };
     document.getElementById("lrn-refresh").onclick = async () => { if (this.currentLrnClass) { await this.loadLearning(this.currentLrnClass); UI.toast("Mutolaa natijalari yangilandi ✓", "ok", 1500); } };
+    // Mutolaa bo'limidan yangi o'quvchi qo'shish (zavuch/boshqaruv)
+    const lrnAdd = document.getElementById("lrn-add");
+    if (lrnAdd) lrnAdd.onclick = () => this.addStudentFromLearning();
+    const lrnBulk = document.getElementById("lrn-bulk-add");
+    if (lrnBulk) lrnBulk.onclick = () => this.bulkAddStudentsFromLearning();
     // Ota-onalar
     document.getElementById("par-class").onchange = (e) => this.loadParents(e.target.value);
     // O'qituvchilar
@@ -1515,7 +1520,18 @@ const Teacher = {
       ? `🎓 Barcha sinflar — mutolaa reytingi${subj ? " • " + UI.esc(subj) : ""}`
       : `🎓 ${UI.esc(cls)} sinf — mutolaa reytingi${subj ? " • " + UI.esc(subj) : ""}`;
     const rbox = document.getElementById("lrn-refresh-box"); if (rbox) rbox.style.display = "block";
-    if (!res.students.length) { box.innerHTML = '<p class="muted">Bu sinfda ma\'lumot yo\'q.</p>'; return; }
+    // Yangi o'quvchi qo'shish oynasi — faqat zavuch/boshqaruv va aniq sinf tanlanganda
+    const addBox = document.getElementById("lrn-add-box");
+    const isAdmin = State.teacher && State.teacher.is_admin;
+    if (addBox) {
+      if (isAdmin && !isAll) {
+        addBox.style.display = "";
+        document.getElementById("lrn-add-class").textContent = cls;
+      } else {
+        addBox.style.display = "none";
+      }
+    }
+    if (!res.students.length) { box.innerHTML = '<p class="muted">Bu sinfda hali o\'quvchi yo\'q.' + (isAdmin && !isAll ? ' Yuqoridan qo\'shing.' : '') + '</p>'; return; }
     box.innerHTML = "";
     res.students.forEach((s, i) => {
       const rank = i + 1;
@@ -1544,6 +1560,46 @@ const Teacher = {
       if (db) db.onclick = (e) => { e.stopPropagation(); this.deleteStudentFromLearning(s, cls); };
       box.appendChild(row);
     });
+  },
+
+  async addStudentFromLearning() {
+    const cls = this.currentLrnClass;
+    if (!cls || cls === "__all__") return UI.toast("Avval aniq sinfni tanlang", "err");
+    const first = document.getElementById("lrn-first").value.trim();
+    const last = document.getElementById("lrn-last").value.trim();
+    if (!first || !last) return UI.toast("Ism va familiyani kiriting", "err");
+    const res = await API.post("/api/students", { first_name: first, last_name: last, class_name: cls });
+    if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+    UI.toast("O'quvchi qo'shildi ✔", "ok");
+    document.getElementById("lrn-first").value = "";
+    document.getElementById("lrn-last").value = "";
+    this.loadLearning(cls);
+  },
+
+  async bulkAddStudentsFromLearning() {
+    const cls = this.currentLrnClass;
+    if (!cls || cls === "__all__") return UI.toast("Avval aniq sinfni tanlang", "err");
+    const raw = document.getElementById("lrn-bulk").value;
+    const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return UI.toast("Ro'yxatni kiriting (har qatorда: Familiya Ism)", "err");
+    const prog = document.getElementById("lrn-add-prog");
+    let added = 0, failed = 0;
+    const errors = [];
+    for (const line of lines) {
+      const parts = line.split(/\s+/);
+      if (parts.length < 2) { failed++; errors.push(`"${line}" — Familiya Ism kerak`); continue; }
+      const last = parts[0];
+      const first = parts.slice(1).join(" ");
+      prog.textContent = `⏳ Qo'shilmoqda: ${added + failed + 1}/${lines.length}...`;
+      const res = await API.post("/api/students", { first_name: first, last_name: last, class_name: cls });
+      if (res.ok) added++;
+      else { failed++; errors.push(`"${line}" — ${res.error || "xatolik"}`); }
+    }
+    prog.textContent = "";
+    document.getElementById("lrn-bulk").value = "";
+    UI.toast(`✅ ${added} ta qo'shildi${failed ? `, ${failed} ta o'tkazib yuborildi` : ""}`, added ? "ok" : "err", 5000);
+    if (errors.length) console.warn("Bulk add:", errors);
+    this.loadLearning(cls);
   },
 
   deleteStudentFromLearning(s, cls) {

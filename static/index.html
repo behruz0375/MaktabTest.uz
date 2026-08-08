@@ -488,6 +488,22 @@
           </div>
           <div id="lrn-class-buttons" class="class-btn-grid"></div>
         </div>
+        <!-- Yangi o'quvchi(lar) qo'shish (faqat zavuch/boshqaruv) -->
+        <div id="lrn-add-box" class="card" style="display:none">
+          <h3 style="margin-bottom:8px">➕ <span id="lrn-add-class"></span> sinfga yangi o'quvchi qo'shish</h3>
+          <div class="add-student-box">
+            <input id="lrn-first" class="inp" placeholder="Ism">
+            <input id="lrn-last" class="inp" placeholder="Familiya">
+            <button id="lrn-add" class="btn btn-secondary">➕ Qo'shish</button>
+          </div>
+          <details style="margin-top:10px">
+            <summary style="cursor:pointer;font-weight:700">📋 Ro'yxatdan ko'p o'quvchi qo'shish</summary>
+            <p class="muted" style="margin:8px 0">Har qatorда bitta o'quvchi: <b>Familiya Ism</b></p>
+            <textarea id="lrn-bulk" class="inp" rows="5" placeholder="Aliyev Bekzod&#10;Yusupova Aziza&#10;Sobirov Diyor"></textarea>
+            <button id="lrn-bulk-add" class="btn btn-secondary" style="margin-top:8px">📥 Ro'yxatni qo'shish</button>
+          </details>
+          <div id="lrn-add-prog" class="muted" style="margin-top:6px"></div>
+        </div>
         <div id="learning-title" class="results-title" style="display:none"></div>
         <div id="lrn-refresh-box" style="display:none;margin-bottom:14px">
           <button id="lrn-refresh" class="btn btn-primary btn-sm">🔄 Yangilash</button>
