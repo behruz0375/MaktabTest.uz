@@ -1086,7 +1086,7 @@ const Teacher = {
       const editEl = row.querySelector("[data-edit]");
       if (editEl) editEl.onclick = (e) => { e.stopPropagation(); this.editStudent(s, cls); };
       const learnEl = row.querySelector("[data-learn]");
-      if (learnEl) learnEl.onclick = (e) => { e.stopPropagation(); this.setLearningLogin(s, cls); };
+      if (learnEl) learnEl.onclick = (e) => { e.stopPropagation(); this.setLearningLogin(s, () => this.loadStudents(cls)); };
       const delEl = row.querySelector("[data-del]");
       if (delEl) delEl.onclick = (e) => { e.stopPropagation(); this.deleteStudent(s.id, s, cls); };
       if (isAdmin) {
@@ -1525,17 +1525,21 @@ const Teacher = {
       const monthTxt = s.month_duration_seconds > 0 ? ` • 📅 shu oy ${this.fmtDurLong(s.month_duration_seconds)}` : "";
       const faollikTxt = (s.faollik_pct != null) ? ` • 📈 faollik ${s.faollik_pct}% (${s.done_lessons}/${s.total_lessons})` : "";
       const isAdmin = State.teacher && State.teacher.is_admin; // zavuch/boshqaruv
+      const loginBtn = isAdmin ? `<button class="btn btn-secondary btn-sm" data-login="${s.id}" title="Bilim olish login/parolini o'zgartirish">${s.learn_username ? "📚 Login ✔" : "📚 Login"}</button>` : "";
       const delBtn = isAdmin ? `<button class="btn btn-danger btn-sm" data-del="${s.id}">🗑️</button>` : "";
+      const loginInfo = (isAdmin && s.learn_username) ? ` • 📚 <b>${UI.esc(s.learn_username)}</b>${s.learn_password ? " / " + UI.esc(s.learn_password) : ""}` : "";
       const row = document.createElement("div");
       row.className = "student-row" + (rank === 1 && s.coins > 0 ? " top1" : "");
       row.innerHTML = `
         <div class="rank-badge ${badgeCls}">${medal}</div>
         <div class="student-info">
           <div class="name">${UI.esc(s.last_name)} ${UI.esc(s.first_name)}${this.bahoBadgeHtml(s.baho, "Oylik baho")}${isAll && s.class_name ? ` <span class="role-tag role-teacher">${UI.esc(s.class_name)}</span>` : ""}</div>
-          <div class="sub">🎬 ${s.videos} video • 🎧 ${s.audios} audio • 📖 ${s.texts} matn${faollikTxt}${durTxt}${monthTxt}</div>
+          <div class="sub">🎬 ${s.videos} video • 🎧 ${s.audios} audio • 📖 ${s.texts} matn${faollikTxt}${durTxt}${monthTxt}${loginInfo}</div>
         </div>
-        <div class="row-tail"><span class="coin-badge">🪙 ${s.coins}</span>${delBtn}</div>`;
+        <div class="row-tail"><span class="coin-badge">🪙 ${s.coins}</span>${loginBtn}${delBtn}</div>`;
       row.querySelector(".student-info").onclick = () => this.showLearningDetail(s.id);
+      const lb = row.querySelector("[data-login]");
+      if (lb) lb.onclick = (e) => { e.stopPropagation(); this.setLearningLogin(s, () => this.loadLearning(cls)); };
       const db = row.querySelector("[data-del]");
       if (db) db.onclick = (e) => { e.stopPropagation(); this.deleteStudentFromLearning(s, cls); };
       box.appendChild(row);
@@ -1722,13 +1726,14 @@ const Teacher = {
   },
 
   /* =============== BILIM OLISH LOGINI (o'quvchi uchun) =============== */
-  setLearningLogin(s, cls) {
+  setLearningLogin(s, onSaved) {
+    const curPass = s.learn_password ? ` • Joriy parol: <b>${UI.esc(s.learn_password)}</b>` : "";
     UI.modal(`
       <span class="modal-icon">📚</span>
       <h2 style="text-align:center">Bilim olish login/paroli</h2>
-      <p class="muted" style="text-align:center">${UI.esc(s.last_name)} ${UI.esc(s.first_name)} shu login/parol bilan "Bilim olish"ga kiradi.</p>
+      <p class="muted" style="text-align:center">${UI.esc(s.last_name)} ${UI.esc(s.first_name)} shu login/parol bilan "Bilim olish"ga kiradi.${curPass}</p>
       <div class="field-row"><label>Login</label><input id="ll-user" class="inp" value="${UI.esc(s.learn_username || "")}" placeholder="masalan: aziza5"></div>
-      <div class="field-row"><label>Parol</label><input id="ll-pass" class="inp" type="text" placeholder="kamida 4 ta belgi"></div>
+      <div class="field-row"><label>Yangi parol</label><input id="ll-pass" class="inp" type="text" placeholder="kamida 4 ta belgi"></div>
       <div style="text-align:center;margin-top:10px"><button class="btn btn-success" id="ll-save">💾 Saqlash</button></div>
     `);
     document.getElementById("ll-save").onclick = async () => {
@@ -1739,8 +1744,8 @@ const Teacher = {
       const res = await API.post(`/api/students/${s.id}/learning-login`, { username: u, password: p });
       if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
       UI.closeModal();
-      UI.toast("Bilim olish logini saqlandi ✔", "ok");
-      this.loadStudents(cls);
+      UI.toast("Bilim olish login/paroli saqlandi ✔", "ok");
+      if (typeof onSaved === "function") onSaved();
     };
   },
 

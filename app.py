@@ -1683,6 +1683,7 @@ def learning_results():
             sp_ + subj_p,
         ).fetchall()
         lesson_totals = {r["class_name"]: r["c"] for r in lt_rows}
+        is_admin = session.get("role") in ("owner", "zavuch", "director")
         out = []
         for s in students:
             if subject:
@@ -1736,6 +1737,8 @@ def learning_results():
                 "total_duration_seconds": total_dur, "month_duration_seconds": month_dur,
                 "class_name": s["class_name"], "monthly_pct": mpct, "baho": baho_from_pct(mpct),
                 "faollik_pct": faollik_pct, "done_lessons": done_completed, "total_lessons": total_lessons,
+                "learn_username": s["learn_username"] if is_admin else None,
+                "learn_password": s["learn_password_plain"] if is_admin else None,
             })
         out.sort(key=lambda x: -x["coins"])
         return jsonify({"ok": True, "class_name": class_name, "subject": subject, "students": out})
