@@ -977,6 +977,7 @@ def live_monitor():
     class_filter = norm(request.args.get("class_name"))
     conn = get_conn()
     try:
+        allowed = teacher_allowed_classes(conn)  # o'qituvchi faqat biriktirilgan sinflarni ko'radi
         rows = conn.execute(
             "SELECT sub.id AS sub_id, sub.started_at, sub.answers_json, s.first_name, s.last_name, s.class_name, "
             "t.title, t.subject, t.code, t.duration_minutes, "
@@ -987,6 +988,8 @@ def live_monitor():
             "WHERE sub.status = 'in_progress'" + school_clause("t")[0] + " ORDER BY sub.started_at DESC",
             school_clause("t")[1],
         ).fetchall()
+        if allowed is not None:
+            rows = [r for r in rows if r["class_name"] in allowed]
         now = datetime.now()
         out = []
         all_classes = sorted(set(r["class_name"] for r in rows))
@@ -1030,6 +1033,8 @@ def live_monitor():
             except Exception:
                 continue
             if class_filter and r["class_name"] != class_filter:
+                continue
+            if allowed is not None and r["class_name"] not in allowed:
                 continue
             left.append({
                 "sub_id": r["sub_id"], "first_name": r["first_name"], "last_name": r["last_name"],
