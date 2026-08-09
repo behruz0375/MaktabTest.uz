@@ -90,10 +90,14 @@ const Learning = {
   },
 
   /* O'quvchi profili — to'liq ma'lumot */
-  renderProfile() {
+  async renderProfile() {
     const box = document.getElementById("profile-content");
     if (!box) return;
     const s = this.student || {};
+    // Reyting va oylik o'zlashtirish (o'z-o'zi haqida)
+    let ov = {};
+    try { ov = await API.get("/api/learning/my-overview?student_id=" + s.id); } catch (e) { ov = {}; }
+    if (!ov || !ov.ok) ov = {};
     const initials = ((s.first_name ? s.first_name[0] : "") + (s.last_name ? s.last_name[0] : "")).toUpperCase();
     const totalLessons = this.lessons.length;
     const done = this.lessons.filter((l) => this.completed.has(l.id)).length;
@@ -116,13 +120,16 @@ const Learning = {
           </div>
         </div>
         <div class="stat-tiles" style="margin-top:16px">
+          <div class="stat-tile"><div class="num">🏅 ${ov.class_rank ? ov.class_rank + "/" + ov.class_total : "—"}</div><div class="lbl">Sinf reytingi</div></div>
+          <div class="stat-tile"><div class="num">🌍 ${ov.overall_rank ? ov.overall_rank + "/" + ov.overall_total : "—"}</div><div class="lbl">Umumiy reyting</div></div>
           <div class="stat-tile"><div class="num">🪙 ${s.coins || 0}</div><div class="lbl">Coinlar</div></div>
           <div class="stat-tile"><div class="num">📈 ${faollik}%</div><div class="lbl">Faollik (${done}/${totalLessons})</div></div>
           <div class="stat-tile"><div class="num">⏱ ${this._fmtDurLong(this._totalSeconds)}</div><div class="lbl">Jami vaqt</div></div>
           <div class="stat-tile"><div class="num">📅 ${this._fmtDurLong(this.todaySeconds)}</div><div class="lbl">Bugun</div></div>
         </div>
         <p class="muted" style="margin:12px 0">📚 Sinfingizda ${totalLessons} ta dars: 🎬 ${v} video • 🎧 ${a} audio • 📖 ${t} matn. Shu oy: ⏱ ${this._fmtDurLong(this.monthSeconds)}.</p>
-        ${UI.chart7(this.daily)}
+        ${UI.chart7(this.daily, { title: "📊 Haftalik faollik (oxirgi 7 kun)" })}
+        ${UI.chartMonthly(ov.monthly, { title: "📈 Oylik o'zlashtirish (test natijalari)" })}
         <h3 style="margin:10px 0 8px">📆 Kunlik vaqtim</h3>
         <div class="daily-time-list">${dailyRows}</div>
       </div>`;

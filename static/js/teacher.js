@@ -2207,5 +2207,38 @@ const Teacher = {
         this.loadResults(cls);
       };
     });
+    // Umumiy o'quvchilar reytingi (test + bilim olish birga)
+    this.loadOverallRanking();
+  },
+
+  async loadOverallRanking() {
+    const box = document.getElementById("stats-content");
+    if (!box) return;
+    const res = await API.get("/api/ranking");
+    if (!res.ok || !res.students.length) return;
+    const rows = res.students.map((s, i) => {
+      const rank = i + 1;
+      const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : rank;
+      const baho = s.baho ? `<span class="baho-badge baho-${s.baho >= 5 ? "5" : s.baho >= 4 ? "4" : s.baho >= 3 ? "3" : "2"}">${s.baho}</span>` : "—";
+      return `<tr>
+        <td style="font-weight:800">${medal}</td>
+        <td>${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</td>
+        <td>${UI.esc(s.class_name)}</td>
+        <td>${baho}</td>
+        <td>${s.best_pct != null ? s.best_pct + "%" : "—"}</td>
+        <td>${s.tests_count} ta</td>
+        <td>🪙 ${s.coins}</td>
+        <td>${s.faollik_pct != null ? s.faollik_pct + "%" : "—"}</td>
+        <td>⏱ ${this.fmtDurLong(s.total_time)}</td>
+      </tr>`;
+    }).join("");
+    const wrap = document.createElement("div");
+    wrap.style.marginTop = "22px";
+    wrap.innerHTML = `
+      <h3 style="margin-bottom:10px">🏆 Umumiy o'quvchilar reytingi (test + bilim olish)</h3>
+      <div style="overflow-x:auto"><table class="sub-table rank-table">
+        <thead><tr><th>#</th><th>O'quvchi</th><th>Sinf</th><th>Baho</th><th>Eng yaxshi</th><th>Testlar</th><th>Coin</th><th>Faollik</th><th>Vaqt</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+    box.appendChild(wrap);
   },
 };

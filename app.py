@@ -2554,6 +2554,75 @@ def list_parents():
 # --------------------------------------------------------------------------
 # STATISTIKA / REYTING (dashboard)
 # --------------------------------------------------------------------------
+@app.route("/api/ranking", methods=["GET"])
+@teacher_required
+def ranking():
+    """Barcha o'quvchilar umumiy reytingi: test + bilim olish natijalari birga."""
+    conn = get_conn()
+    try:
+        sc_, sp_ = school_clause()
+        allowed = teacher_allowed_classes(conn)
+        if allowed is not None:
+            ph = ",".join("?" for _ in allowed)
+            students = conn.execute("SELECT * FROM students WHERE class_name IN (" + ph + ")" + sc_ + " ORDER BY class_name, last_name", list(allowed) + sp_).fetchall()
+        else:
+            students = conn.execute("SELECT * FROM students WHERE 1=1" + sc_ + " ORDER BY class_name, last_name", sp_).fetchall()
+        lt_rows = conn.execute("SELECT class_name, COUNT(*) AS c FROM lessons WHERE 1=1" + sc_ + " GROUP BY class_name", sp_).fetchall()
+        lesson_totals = {r["class_name"]: r["c"] for r in lt_rows}
+        out = []
+        for s in students:
+            subs = conn.execute("SELECT percentage FROM submissions WHERE student_id = ? AND status = 'completed'", (s["id"],)).fetchall()
+            best_pct = max([x["percentage"] for x in subs], default=None)
+            mpct = monthly_pct(conn, s["id"])
+            total_time = conn.execute("SELECT COALESCE(SUM(seconds),0) AS s FROM learning_daily WHERE student_id = ?", (s["id"],)).fetchone()["s"]
+            done = conn.execute("SELECT COUNT(DISTINCT lesson_id) AS c FROM learning_activity WHERE student_id = ? AND completed = 1", (s["id"],)).fetchone()["c"]
+            tl = lesson_totals.get(s["class_name"], 0)
+            faollik = round(min(100, done / tl * 100), 0) if tl else None
+            out.append({
+                "id": s["id"], "first_name": s["first_name"], "last_name": s["last_name"], "class_name": s["class_name"],
+                "best_pct": round(best_pct, 1) if best_pct is not None else None,
+                "monthly_pct": mpct, "baho": baho_from_pct(best_pct),
+                "coins": s["coins"] or 0, "total_time": total_time, "done_lessons": done, "total_lessons": tl,
+                "faollik_pct": faollik, "tests_count": len(subs),
+            })
+        out.sort(key=lambda x: (-(x["best_pct"] if x["best_pct"] is not None else -1), -x["coins"]))
+        return jsonify({"ok": True, "students": out})
+    finally:
+        conn.close()
+
+
+@app.route("/api/learning/my-overview", methods=["GET"])
+def my_overview():
+    """O'quvchining o'zi uchun: sinf reytingi, umumiy reyting, haftalik faollik, oylik o'zlashtirish."""
+    try:
+        student_id = int(request.args.get("student_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "student_id"}), 400
+    conn = get_conn()
+    try:
+        s = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+        if not s:
+            return jsonify({"ok": False, "error": "Topilmadi"}), 404
+        school_id = s["school_id"]
+        classmates = conn.execute("SELECT id FROM students WHERE class_name = ? AND school_id IS ? ORDER BY COALESCE(coins,0) DESC, id", (s["class_name"], school_id)).fetchall()
+        class_rank = next((i + 1 for i, x in enumerate(classmates) if x["id"] == student_id), None)
+        allstu = conn.execute("SELECT id FROM students WHERE school_id IS ? ORDER BY COALESCE(coins,0) DESC, id", (school_id,)).fetchall()
+        overall_rank = next((i + 1 for i, x in enumerate(allstu) if x["id"] == student_id), None)
+        rows = conn.execute(
+            "SELECT substr(submitted_at,1,7) AS ym, AVG(percentage) AS p FROM submissions "
+            "WHERE student_id = ? AND status = 'completed' GROUP BY ym ORDER BY ym DESC LIMIT 6", (student_id,)
+        ).fetchall()
+        monthly = [{"month": r["ym"], "pct": round(r["p"], 1)} for r in rows][::-1]
+        bd = time_breakdown(conn, student_id)
+        return jsonify({"ok": True,
+                        "class_rank": class_rank, "class_total": len(classmates),
+                        "overall_rank": overall_rank, "overall_total": len(allstu),
+                        "coins": s["coins"] or 0, "monthly_pct": monthly_pct(conn, student_id),
+                        "daily": bd["daily"], "monthly": monthly})
+    finally:
+        conn.close()
+
+
 @app.route("/api/stats", methods=["GET"])
 @teacher_required
 def stats():

@@ -174,6 +174,25 @@ const UI = {
     return `<div class="chart7-box"><div class="chart7-title">${title}</div><div class="chart7">${bars}</div></div>`;
   },
 
+  /* --- Oylik o'zlashtirish diagrammasi (test foizlari) --- */
+  chartMonthly(monthly, opts = {}) {
+    const arr = monthly || [];
+    if (!arr.length) return `<div class="chart7-box"><div class="chart7-title">${opts.title || "📈 Oylik o'zlashtirish"}</div><p class="muted">Hali test topshirilmagan.</p></div>`;
+    const names = ["Yan", "Fev", "Mar", "Apr", "May", "Iyn", "Iyl", "Avg", "Sen", "Okt", "Noy", "Dek"];
+    const label = (ym) => { const p = (ym || "").split("-"); return p.length === 2 ? (names[parseInt(p[1], 10) - 1] || p[1]) : ym; };
+    const bars = arr.map((d) => {
+      const pct = Math.max(0, Math.min(100, d.pct || 0));
+      const h = pct > 0 ? Math.max(8, Math.round(pct)) : 0;
+      const color = pct >= 87 ? "#23c483" : pct >= 71 ? "#3ca6ff" : pct >= 55 ? "#f8a928" : "#e94b4b";
+      return `<div class="c7-col" title="${d.month}: ${pct}%">
+        <div class="c7-val">${Math.round(pct)}%</div>
+        <div class="c7-track"><div class="c7-bar" style="height:${h}%;background:${color}"></div></div>
+        <div class="c7-day">${label(d.month)}</div>
+      </div>`;
+    }).join("");
+    return `<div class="chart7-box"><div class="chart7-title">${opts.title || "📈 Oylik o'zlashtirish (test)"}</div><div class="chart7">${bars}</div></div>`;
+  },
+
   /* --- HTML xavfsiz chiqarish --- */
   esc(s) {
     return String(s == null ? "" : s)
