@@ -12,6 +12,7 @@ const Learning = {
         document.querySelectorAll(".learn-pane").forEach((p) => p.classList.remove("active"));
         document.getElementById("learn-" + t.dataset.ltab).classList.add("active");
         if (t.dataset.ltab === "subjects") this.renderSubjects();
+        if (t.dataset.ltab === "rank") this.renderRanking();
         if (t.dataset.ltab === "profile") this.renderProfile();
       };
     });
@@ -32,6 +33,8 @@ const Learning = {
     this.todaySeconds = payload.student.today_duration_seconds || 0;
     this.monthSeconds = payload.student.month_duration_seconds || 0;
     this.schoolName = payload.school_name || "";
+    this.gameCoins = payload.game_coins || 0;
+    Games._rewarded = {};
     this.currentSubject = null;
     this.renderSubjects();
     this.renderMyDaily();
@@ -87,6 +90,60 @@ const Learning = {
         </div>
         <div class="daily-time-list">${rows}</div>
       </div>`;
+  },
+
+  /* ===== REYTING: o'z sinfi va maktabdagi barcha o'quvchilar ===== */
+  _rankRow(r, meId) {
+    const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : r.rank;
+    const badgeCls = r.rank === 1 ? "gold" : r.rank === 2 ? "silver" : r.rank === 3 ? "bronze" : "";
+    const initials = ((r.first_name[0] || "") + (r.last_name[0] || "")).toUpperCase();
+    const me = r.id === meId;
+    const baho = r.baho ? `<span class="baho-badge baho-${r.baho >= 5 ? "5" : r.baho >= 4 ? "4" : r.baho >= 3 ? "3" : "2"}">${r.baho}</span>` : "";
+    return `
+      <div class="student-row${me ? " rank-me" : ""}" style="cursor:default">
+        <div class="rank-badge ${badgeCls}">${medal}</div>
+        <div class="student-avatar">${UI.esc(initials)}</div>
+        <div class="student-info">
+          <div class="name">${UI.esc(r.last_name)} ${UI.esc(r.first_name)}${me ? ' <span class="role-tag role-teacher">siz</span>' : ""} ${baho}</div>
+          <div class="sub">🪙 ${r.coins} coin${r.best_pct != null ? ` • 📊 eng yaxshi test: ${r.best_pct}%` : ""}</div>
+        </div>
+        <span class="status-pill done">${UI.esc(r.class_name)}</span>
+      </div>`;
+  },
+
+  _rankBlock(title, list, meId, limit) {
+    if (!list.length) return `<div class="baho-group"><div class="baho-group-title">${title}</div><p class="muted">Hozircha reyting bo'sh.</p></div>`;
+    let shown = limit ? list.slice(0, limit) : list;
+    let extra = "";
+    if (limit && !shown.some((r) => r.id === meId)) {
+      const mine = list.find((r) => r.id === meId);
+      if (mine) extra = `<div class="muted" style="text-align:center;margin:6px 0">⋯</div>` + this._rankRow(mine, meId);
+    }
+    return `<div class="baho-group">
+      <div class="baho-group-title">${title} — ${list.length} ta o'quvchi</div>
+      <div class="results-list">${shown.map((r) => this._rankRow(r, meId)).join("")}${extra}</div>
+    </div>`;
+  },
+
+  async renderRanking() {
+    const box = document.getElementById("rank-content");
+    if (!box) return;
+    const s = this.student || {};
+    box.innerHTML = '<p class="muted">Yuklanmoqda...</p>';
+    let res = {};
+    try { res = await API.get("/api/rankings/student?student_id=" + s.id); } catch (e) { res = {}; }
+    if (!res || !res.ok) { box.innerHTML = '<p class="muted">Reytingni yuklab bo\'lmadi.</p>'; return; }
+    const mine = (res.school_ranking || []).find((r) => r.id === s.id);
+    const myClass = (res.class_ranking || []).find((r) => r.id === s.id);
+    box.innerHTML = `
+      <div class="stat-tiles">
+        <div class="stat-tile"><div class="num">🏅 ${myClass ? myClass.rank + "/" + res.class_ranking.length : "—"}</div><div class="lbl">Sinfingizdagi o'rningiz</div></div>
+        <div class="stat-tile"><div class="num">🌍 ${mine ? mine.rank + "/" + res.school_ranking.length : "—"}</div><div class="lbl">Maktabdagi o'rningiz</div></div>
+        <div class="stat-tile"><div class="num">🪙 ${s.coins || 0}</div><div class="lbl">Coinlaringiz</div></div>
+      </div>
+      <p class="muted" style="margin-bottom:16px">Reyting coinlar bo'yicha tuziladi. Dars ko'ring, o'qing va o'yin o'ynang — coiningiz oshadi va yuqoriga ko'tarilasiz!</p>
+      ${this._rankBlock(`🏅 ${UI.esc(res.class_name || "")} sinf reytingi`, res.class_ranking || [], s.id)}
+      ${this._rankBlock("🌍 Maktabdagi barcha o'quvchilar reytingi", res.school_ranking || [], s.id, 30)}`;
   },
 
   /* O'quvchi profili — to'liq ma'lumot */

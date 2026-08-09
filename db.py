@@ -163,6 +163,15 @@ CREATE TABLE IF NOT EXISTS learning_daily (
     PRIMARY KEY (student_id, date)
 );
 
+CREATE TABLE IF NOT EXISTS game_rewards (
+    student_id INTEGER NOT NULL,
+    game       TEXT NOT NULL,
+    date       TEXT NOT NULL,
+    coins      INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (student_id, game, date)
+);
+
 CREATE INDEX IF NOT EXISTS idx_questions_test ON questions(test_id);
 CREATE INDEX IF NOT EXISTS idx_sub_test ON submissions(test_id);
 CREATE INDEX IF NOT EXISTS idx_sub_student ON submissions(student_id);

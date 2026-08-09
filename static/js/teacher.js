@@ -65,6 +65,9 @@ const Teacher = {
     // Ish vaqtini sozlash (boshqaruv)
     const whBtn = document.getElementById("work-hours-btn");
     if (whBtn) whBtn.onclick = () => this.openWorkHours();
+    // O'yinlar uchun coin (zavuch/boshqaruv)
+    const gcBtn = document.getElementById("game-coins-btn");
+    if (gcBtn) gcBtn.onclick = () => this.openGameCoins();
     // Telefon burger menyu
     const burger = document.getElementById("burger");
     const overlay = document.getElementById("sidebar-overlay");
@@ -229,6 +232,8 @@ const Teacher = {
     setDisp("clear-data-box", isAdmin && entered);
     // Ish vaqtini sozlash — faqat boshqaruv (egasi)
     setDisp("work-hours-box", isOwner);
+    // O'yin coinini sozlash — zavuch/boshqaruv
+    setDisp("game-coins-box", isAdmin && entered);
   },
 
   async enterSchool(school) {
@@ -331,7 +336,7 @@ const Teacher = {
       b.classList.toggle("active", b.dataset.section === id)
     );
     if (id === "tests") this.loadTests();
-    if (id === "results") this.renderResClassButtons();
+    if (id === "results") { this.renderResClassButtons(); if (this.currentResClass) this.loadResults(this.currentResClass); }
     if (id === "lessons") this.loadLessons();
     if (id === "learning") this.renderLrnClassButtons();
     if (id === "stats") this.loadStats();
@@ -1015,34 +1020,14 @@ const Teacher = {
     ranked.sort((a, b) => (b.st.pct - a.st.pct) || (a.st.dur - b.st.dur));
     const rankMap = new Map();
     ranked.forEach(({ s }, i) => rankMap.set(s.id, i + 1));
-    // 1) BARCHA topshirgan o'quvchilar (reyting bo'yicha)
+    // BARCHA natijalar bitta ro'yxatda: avval 5 baho olganlar, keyin 4, 3, 2 (har o'quvchi bir marta)
     const allG = document.createElement("div");
     allG.className = "baho-group";
-    allG.innerHTML = `<div class="baho-group-title">👥 Barcha natijalar (reyting) — ${submitted.length} ta</div>`;
+    allG.innerHTML = `<div class="baho-group-title">👥 Barcha natijalar (5 → 4 → 3 → 2 tartibida) — ${submitted.length} ta</div>`;
     const allL = document.createElement("div"); allL.className = "results-list";
     ranked.forEach(({ s, st }) => allL.appendChild(this._resultRow(s, st, rankMap.get(s.id))));
     allG.appendChild(allL); box.appendChild(allG);
 
-    // 2) Baho bo'yicha guruhlar (5/4/3/2/1)
-    const groups = [
-      { baho: 5, cls: "baho-5", label: "5 baho olganlar (A'lo)" },
-      { baho: 4, cls: "baho-4", label: "4 baho olganlar (Yaxshi)" },
-      { baho: 3, cls: "baho-3", label: "3 baho olganlar (Qoniqarli)" },
-      { baho: 2, cls: "baho-2", label: "2 baho olganlar" },
-      { baho: 1, cls: "baho-2", label: "1 baho olganlar" },
-    ];
-    groups.forEach((g) => {
-      const items = ranked.filter((r) => r.baho === g.baho);
-      if (!items.length) return;
-      const groupEl = document.createElement("div");
-      groupEl.className = "baho-group";
-      groupEl.innerHTML = `<div class="baho-group-title"><span class="baho-badge ${g.cls}">${g.baho}</span> ${g.label} — ${items.length} ta</div>`;
-      const list = document.createElement("div");
-      list.className = "results-list";
-      items.forEach(({ s, st }) => list.appendChild(this._resultRow(s, st, rankMap.get(s.id))));
-      groupEl.appendChild(list);
-      box.appendChild(groupEl);
-    });
     // Topshirmaganlar
     if (pending.length) {
       const groupEl = document.createElement("div");
@@ -1385,6 +1370,28 @@ const Teacher = {
       if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
       UI.closeModal();
       UI.toast(always.checked ? "Tizim doim ishlaydi (24/7) ✓" : `Ish vaqti: ${res.start}:00–${res.end}:00 ✓`, "ok", 4000);
+    };
+  },
+
+  openGameCoins() {
+    UI.modal(`
+      <span class="modal-icon">🎮</span>
+      <h2 style="text-align:center">O'yinlar uchun coin</h2>
+      <p class="muted" style="text-align:center">O'quvchi miyani charxlaydigan o'yinni muvaffaqiyatli yakunlasa shuncha coin oladi.<br>Har bir o'yin uchun <b>kuniga bir marta</b> beriladi. 0 qo'ysangiz — coin berilmaydi.</p>
+      <div class="field-row" style="margin-top:10px">
+        <label>Bitta o'yin uchun coin (0–500)</label>
+        <input id="gc-coins" class="inp" type="number" min="0" max="500" value="5">
+      </div>
+      <div style="text-align:center;margin-top:10px"><button class="btn btn-success" id="gc-save">💾 Saqlash</button></div>`);
+    API.get("/api/settings/game-coins").then((r) => {
+      if (r.ok) document.getElementById("gc-coins").value = r.coins;
+    });
+    document.getElementById("gc-save").onclick = async () => {
+      const coins = parseInt(document.getElementById("gc-coins").value, 10);
+      const res = await API.post("/api/settings/game-coins", { coins });
+      if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+      UI.closeModal();
+      UI.toast(`Har bir o'yin uchun 🪙 ${res.coins} coin ✓`, "ok", 4000);
     };
   },
 

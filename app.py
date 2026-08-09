@@ -193,6 +193,26 @@ def check_work_hours():
     return None
 
 
+GAME_COINS_DEFAULT = 5
+# O'yinlar ro'yxati (mukofot berish uchun ruxsat etilgan kalitlar)
+GAME_KEYS = ("g2048", "sudoku", "ttt", "memory", "math", "numemory", "simon", "sequence")
+
+
+def game_coins_key(school_id):
+    return f"game_coins:{school_id}" if school_id else "game_coins"
+
+
+def get_game_coins(school_id):
+    """Bitta o'yin uchun beriladigan coin (zavuch belgilaydi)."""
+    val = get_setting(game_coins_key(school_id)) if school_id else None
+    if val is None:
+        val = get_setting("game_coins", str(GAME_COINS_DEFAULT))
+    try:
+        return max(0, int(val))
+    except (TypeError, ValueError):
+        return GAME_COINS_DEFAULT
+
+
 def get_teacher_classes(conn, teacher_id):
     """O'qituvchiga biriktirilgan sinflar (bo'sh = hammasi)."""
     row = conn.execute("SELECT assigned_classes FROM teachers WHERE id = ?", (teacher_id,)).fetchone()
@@ -1706,6 +1726,7 @@ def learning_enter():
         return jsonify({
             "ok": True,
             "school_name": school_name,
+            "game_coins": get_game_coins(school_id),
             "student": {"id": student["id"], "first_name": student["first_name"], "last_name": student["last_name"],
                         "class_name": student["class_name"], "coins": student["coins"] or 0,
                         "total_duration_seconds": bd["total_seconds"], "month_duration_seconds": bd["month_seconds"],
@@ -2621,6 +2642,100 @@ def my_overview():
         conn.close()
 
 
+def _ranking_list(conn, school_id, class_name=None):
+    """O'quvchilar reytingi: coin bo'yicha, teng bo'lsa eng yaxshi test foizi bo'yicha."""
+    q = ("SELECT s.id, s.first_name, s.last_name, s.class_name, COALESCE(s.coins,0) AS coins, "
+         "(SELECT MAX(percentage) FROM submissions WHERE student_id = s.id AND status = 'completed') AS best_pct "
+         "FROM students s WHERE s.school_id IS ?")
+    p = [school_id]
+    if class_name:
+        q += " AND s.class_name = ?"
+        p.append(class_name)
+    q += " ORDER BY coins DESC, best_pct DESC, s.last_name, s.first_name"
+    out = []
+    for i, r in enumerate(conn.execute(q, p).fetchall()):
+        out.append({
+            "rank": i + 1, "id": r["id"],
+            "first_name": r["first_name"], "last_name": r["last_name"], "class_name": r["class_name"],
+            "coins": r["coins"],
+            "best_pct": round(r["best_pct"], 1) if r["best_pct"] is not None else None,
+            "baho": baho_from_pct(r["best_pct"]),
+        })
+    return out
+
+
+def _rankings_payload(conn, s):
+    return {
+        "ok": True,
+        "student_id": s["id"],
+        "class_name": s["class_name"],
+        "class_ranking": _ranking_list(conn, s["school_id"], s["class_name"]),
+        "school_ranking": _ranking_list(conn, s["school_id"]),
+    }
+
+
+@app.route("/api/rankings/student", methods=["GET"])
+def student_rankings():
+    """O'quvchining o'zi uchun: sinf reytingi va maktabdagi barcha o'quvchilar reytingi."""
+    try:
+        student_id = int(request.args.get("student_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "student_id"}), 400
+    conn = get_conn()
+    try:
+        s = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+        if not s:
+            return jsonify({"ok": False, "error": "Topilmadi"}), 404
+        return jsonify(_rankings_payload(conn, s))
+    finally:
+        conn.close()
+
+
+@app.route("/api/parent/rankings", methods=["GET"])
+def parent_rankings():
+    """Ota-ona uchun: farzandi sinfi va maktabi bo'yicha reyting."""
+    sid = session.get("parent_student_id")
+    if not sid:
+        return jsonify({"ok": False, "error": "Avval kiring"}), 401
+    conn = get_conn()
+    try:
+        s = conn.execute("SELECT * FROM students WHERE id = ?", (sid,)).fetchone()
+        if not s:
+            return jsonify({"ok": False, "error": "Topilmadi"}), 404
+        return jsonify(_rankings_payload(conn, s))
+    finally:
+        conn.close()
+
+
+@app.route("/api/games/reward", methods=["POST"])
+def game_reward():
+    """O'yinni yakunlagan o'quvchiga coin beradi (har o'yin uchun kuniga bir marta)."""
+    data = request.get_json(force=True, silent=True) or {}
+    student_id = data.get("student_id")
+    game = norm(data.get("game"))
+    if game not in GAME_KEYS:
+        return jsonify({"ok": False, "error": "O'yin noto'g'ri"}), 400
+    conn = get_conn()
+    try:
+        s = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+        if not s:
+            return jsonify({"ok": False, "error": "O'quvchi topilmadi"}), 404
+        coins = get_game_coins(s["school_id"])
+        today = datetime.now().strftime("%Y-%m-%d")
+        done = conn.execute("SELECT 1 FROM game_rewards WHERE student_id = ? AND game = ? AND date = ?",
+                            (student_id, game, today)).fetchone()
+        if done or coins <= 0:
+            return jsonify({"ok": True, "already": True, "coins": 0, "total_coins": s["coins"] or 0})
+        conn.execute("INSERT INTO game_rewards (student_id, game, date, coins, created_at) VALUES (?, ?, ?, ?, ?)",
+                     (student_id, game, today, coins, now_iso()))
+        conn.execute("UPDATE students SET coins = COALESCE(coins,0) + ? WHERE id = ?", (coins, student_id))
+        conn.commit()
+        total = conn.execute("SELECT coins FROM students WHERE id = ?", (student_id,)).fetchone()["coins"]
+        return jsonify({"ok": True, "already": False, "coins": coins, "total_coins": total})
+    finally:
+        conn.close()
+
+
 @app.route("/api/stats", methods=["GET"])
 @teacher_required
 def stats():
@@ -3020,6 +3135,26 @@ def set_work_hours_ep():
     set_setting("work_start", start)
     set_setting("work_end", end)
     return jsonify({"ok": True, "start": start, "end": end})
+
+
+@app.route("/api/settings/game-coins", methods=["GET"])
+@teacher_required
+def get_game_coins_ep():
+    return jsonify({"ok": True, "coins": get_game_coins(scope_school_id())})
+
+
+@app.route("/api/settings/game-coins", methods=["POST"])
+@role_required("owner", "zavuch")
+def set_game_coins_ep():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        coins = int(data.get("coins"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Coin miqdorini kiriting (0–500)"}), 400
+    if not (0 <= coins <= 500):
+        return jsonify({"ok": False, "error": "Coin 0 dan 500 gacha bo'lsin"}), 400
+    set_setting(game_coins_key(scope_school_id()), coins)
+    return jsonify({"ok": True, "coins": coins})
 
 
 # --------------------------------------------------------------------------

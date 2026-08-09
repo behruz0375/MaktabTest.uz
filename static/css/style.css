@@ -1092,6 +1092,15 @@ body.modal-open { overflow: hidden; }   /* modal ochiq bo'lsa orqa fon scroll qi
 .memory .mcard.flipped { background: var(--card-solid); border: 2px solid var(--primary-1); }
 .memory .mcard.matched { background: linear-gradient(135deg, var(--success-1), var(--success-2)); cursor: default; }
 
+/* Ketma-ketlik (Simon) */
+.simon { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; max-width: 300px; margin: 0 auto; }
+.simon .pad { aspect-ratio: 1; border-radius: 16px; cursor: pointer; opacity: .55; transition: var(--trans); }
+.simon .pad:hover { opacity: .75; }
+.simon .pad.on { opacity: 1; transform: scale(1.06); box-shadow: 0 0 26px currentColor; }
+
+/* Reytingda o'zining (farzandining) qatori */
+.student-row.rank-me { border-color: var(--primary-1); box-shadow: 0 8px 24px var(--glow); }
+
 /* Math Sprint */
 .math-sprint { text-align: center; }
 .math-q { font-size: 2.8rem; font-weight: 900; margin: 16px 0; }

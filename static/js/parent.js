@@ -8,7 +8,7 @@ const Parent = {
     const rf = document.getElementById("pr-refresh");
     if (rf) rf.onclick = async () => {
       const res = await API.get("/api/parent/activity");
-      if (res.ok) { this.render(res); UI.toast("Yangilandi ✓", "ok", 1500); }
+      if (res.ok) { this.render(res); this.renderRankings(); UI.toast("Yangilandi ✓", "ok", 1500); }
       else UI.toast(res.error || "Xatolik", "err");
     };
   },
@@ -32,7 +32,51 @@ const Parent = {
     const res = await API.get("/api/parent/activity");
     if (!res.ok) { UI.toast(res.error || "Xatolik", "err"); return; }
     this.render(res);
+    this.renderRankings();
     UI.showView("view-parent");
+  },
+
+  /* Sinf va maktab reytingi (farzandi ajratib ko'rsatiladi) */
+  _rankRow(r, meId) {
+    const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : r.rank;
+    const badgeCls = r.rank === 1 ? "gold" : r.rank === 2 ? "silver" : r.rank === 3 ? "bronze" : "";
+    const initials = ((r.first_name[0] || "") + (r.last_name[0] || "")).toUpperCase();
+    const me = r.id === meId;
+    const baho = r.baho ? `<span class="baho-badge baho-${r.baho >= 5 ? "5" : r.baho >= 4 ? "4" : r.baho >= 3 ? "3" : "2"}">${r.baho}</span>` : "";
+    return `
+      <div class="student-row${me ? " rank-me" : ""}" style="cursor:default">
+        <div class="rank-badge ${badgeCls}">${medal}</div>
+        <div class="student-avatar">${UI.esc(initials)}</div>
+        <div class="student-info">
+          <div class="name">${UI.esc(r.last_name)} ${UI.esc(r.first_name)}${me ? ' <span class="role-tag role-teacher">farzandingiz</span>' : ""} ${baho}</div>
+          <div class="sub">🪙 ${r.coins} coin${r.best_pct != null ? ` • 📊 eng yaxshi test: ${r.best_pct}%` : ""}</div>
+        </div>
+        <span class="status-pill done">${UI.esc(r.class_name)}</span>
+      </div>`;
+  },
+
+  _rankBlock(title, list, meId, limit) {
+    if (!list.length) return "";
+    const shown = limit ? list.slice(0, limit) : list;
+    let extra = "";
+    if (limit && !shown.some((r) => r.id === meId)) {
+      const mine = list.find((r) => r.id === meId);
+      if (mine) extra = '<div class="muted" style="text-align:center;margin:6px 0">⋯</div>' + this._rankRow(mine, meId);
+    }
+    return `<h2 class="results-title" style="margin-top:22px">${title} — ${list.length} ta o'quvchi</h2>
+      <div class="results-list">${shown.map((r) => this._rankRow(r, meId)).join("")}${extra}</div>`;
+  },
+
+  async renderRankings() {
+    const box = document.getElementById("parent-rankings");
+    if (!box) return;
+    let res = {};
+    try { res = await API.get("/api/parent/rankings"); } catch (e) { res = {}; }
+    if (!res || !res.ok) { box.innerHTML = ""; return; }
+    const meId = res.student_id;
+    box.innerHTML =
+      this._rankBlock(`🏅 ${UI.esc(res.class_name || "")} sinf reytingi`, res.class_ranking || [], meId) +
+      this._rankBlock("🌍 Maktab o'quvchilari reytingi", res.school_ranking || [], meId, 30);
   },
 
   bahoOf(pct) { return pct >= 87 ? 5 : pct >= 71 ? 4 : pct >= 55 ? 3 : 2; },
