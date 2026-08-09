@@ -1339,10 +1339,8 @@ def _grade_and_finish(conn, sub, answers, status, violation_reason=None):
         (status, correct, total, correct, wrong, percentage, json.dumps(answers),
          violation_reason, now_iso(), duration, sub["id"]),
     )
-    # Coin mukofoti (faqat muvaffaqiyatli yakunlaganda, chetlashtirilganda emas)
-    coins = correct * COIN_TEST_PER_CORRECT if status == "completed" else 0
-    if coins:
-        conn.execute("UPDATE students SET coins = COALESCE(coins,0) + ? WHERE id = ?", (coins, sub["student_id"]))
+    # Test yechish uchun coin BERILMAYDI (coin faqat bilim olishда)
+    coins = 0
     conn.commit()
     return {"score": correct, "correct_count": correct, "wrong_count": wrong,
             "total": total, "percentage": round(percentage, 1), "duration_seconds": duration,
