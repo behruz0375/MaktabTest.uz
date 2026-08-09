@@ -33,6 +33,8 @@ const Teacher = {
       document.getElementById("ls-test-builder").style.display = e.target.checked ? "" : "none";
     };
     document.getElementById("ls-open-slots").onclick = () => this.openLessonSlots();
+    const lsTpl = document.getElementById("ls-test-template");
+    if (lsTpl) lsTpl.onclick = (e) => { e.preventDefault(); this.downloadTemplate(); };
     // Mutolaa natijalari
     document.getElementById("lrn-class").onchange = (e) => this.loadLearning(e.target.value);
     document.getElementById("lrn-subject").onchange = () => { if (this.currentLrnClass) this.loadLearning(this.currentLrnClass); };
@@ -390,7 +392,8 @@ const Teacher = {
   startLive() {
     const sel = document.getElementById("live-class");
     if (sel && sel.dataset.done !== "1") {
-      State.meta.classes.forEach((c) => {
+      // O'qituvchi faqat biriktirilgan sinflarni ko'radi
+      this._classesForMe().forEach((c) => {
         const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o);
       });
       sel.dataset.done = "1";
@@ -421,6 +424,14 @@ const Teacher = {
   async loadLive() {
     const selEl = document.getElementById("live-class");
     const cls = selEl ? selEl.value : "";
+    // O'qituvchi biriktirilmagan sinfni tanlasa — ruxsat xabari
+    const allowed = this._allowedClasses();
+    if (cls && allowed && !allowed.includes(cls)) {
+      const box = document.getElementById("live-list");
+      if (box) box.innerHTML = `<div class="empty-note">🚫 Sizga <b>${UI.esc(cls)}</b> sinfiga kirishga ruxsat etilmagan. Faqat biriktirilgan sinflaringizni kuzata olasiz.</div>`;
+      document.getElementById("live-count").textContent = 0;
+      return;
+    }
     const res = await API.get("/api/live" + (cls ? "?class_name=" + encodeURIComponent(cls) : ""));
     if (!res.ok) return;
     this._live = res.active;
@@ -1139,11 +1150,12 @@ const Teacher = {
   /* =============== O'QUVCHILAR RO'YXATI =============== */
   async loadStudents(cls) {
     if (!cls) return;
-    document.getElementById("stu-add-box").style.display = "flex";
+    const canAdd = State.teacher && State.teacher.is_admin; // faqat zavuch/boshqaruv o'quvchi qo'shadi
+    document.getElementById("stu-add-box").style.display = canAdd ? "flex" : "none";
     const res = await API.get("/api/students?class_name=" + encodeURIComponent(cls));
     const box = document.getElementById("students-list");
     if (!res.ok) { box.innerHTML = ""; return; }
-    if (!res.students.length) { box.innerHTML = '<p class="muted">Bu sinfda hali o\'quvchi yo\'q. Yuqoridan qo\'shing.</p>'; return; }
+    if (!res.students.length) { box.innerHTML = '<p class="muted">Bu sinfda hali o\'quvchi yo\'q.' + (canAdd ? ' Yuqoridan qo\'shing.' : '') + '</p>'; return; }
     box.innerHTML = "";
     const isAdmin = State.teacher && State.teacher.is_admin; // direktor/zavuch
     res.students.forEach((s) => {
@@ -1451,24 +1463,36 @@ const Teacher = {
     if (!subject) return UI.toast("Fanni tanlang", "err");
     if (!cls) return UI.toast("Sinfni tanlang", "err");
 
-    // Darsdan keyingi test (qo'lda yozilgan) — avval testni yaratamiz
+    // Darsdan keyingi test — fayldan yoki qo'lda
     let relatedTestId = null;
     if (document.getElementById("ls-has-test").checked) {
-      this.syncLessonFromDOM();
-      if (!this.lessonQuestions.length) return UI.toast("Test uchun savol qo'shing yoki test belgisini oching", "err");
-      for (let i = 0; i < this.lessonQuestions.length; i++) {
-        const q = this.lessonQuestions[i];
-        if (!q.text.trim()) return UI.toast(`Test: ${i + 1}-savol matni bo'sh`, "err");
-        if (!q.a.trim() || !q.b.trim() || !q.c.trim() || !q.d.trim()) return UI.toast(`Test: ${i + 1}-savol variantlarini to'ldiring`, "err");
-        if (!["A", "B", "C", "D"].includes(q.correct)) return UI.toast(`Test: ${i + 1}-savol to'g'ri javobini tanlang`, "err");
-      }
       const dur = parseInt(document.getElementById("ls-test-dur").value, 10) || 10;
-      const tRes = await API.post("/api/tests", {
-        title: title + " — dars testi", subject, class_name: cls, duration_minutes: dur,
-        questions: this.lessonQuestions.map((q) => ({ text: q.text, option_a: q.a, option_b: q.b, option_c: q.c, option_d: q.d, correct_option: q.correct })),
-      });
-      if (!tRes.ok) return UI.toast("Test yaratishda xato: " + (tRes.error || ""), "err");
-      relatedTestId = tRes.test_id;
+      const testFile = document.getElementById("ls-test-file").files[0];
+      if (testFile) {
+        // Fayldan (Excel/CSV/Word/PDF) test yaratamiz — xuddi test importi kabi
+        const tfd = new FormData();
+        tfd.append("title", title + " — dars testi"); tfd.append("subject", subject);
+        tfd.append("class_name", cls); tfd.append("duration_minutes", dur); tfd.append("file", testFile);
+        let tj = {};
+        try { const r = await fetch("/api/tests/import", { method: "POST", body: tfd }); tj = await r.json(); } catch (e) {}
+        if (!tj.ok) return UI.toast("Fayldan test yaratishda xato: " + (tj.error || ""), "err");
+        relatedTestId = tj.test_id;
+      } else {
+        this.syncLessonFromDOM();
+        if (!this.lessonQuestions.length) return UI.toast("Test uchun savol qo'shing yoki fayl yuklang", "err");
+        for (let i = 0; i < this.lessonQuestions.length; i++) {
+          const q = this.lessonQuestions[i];
+          if (!q.text.trim()) return UI.toast(`Test: ${i + 1}-savol matni bo'sh`, "err");
+          if (!q.a.trim() || !q.b.trim() || !q.c.trim() || !q.d.trim()) return UI.toast(`Test: ${i + 1}-savol variantlarini to'ldiring`, "err");
+          if (!["A", "B", "C", "D"].includes(q.correct)) return UI.toast(`Test: ${i + 1}-savol to'g'ri javobini tanlang`, "err");
+        }
+        const tRes = await API.post("/api/tests", {
+          title: title + " — dars testi", subject, class_name: cls, duration_minutes: dur,
+          questions: this.lessonQuestions.map((q) => ({ text: q.text, option_a: q.a, option_b: q.b, option_c: q.c, option_d: q.d, correct_option: q.correct })),
+        });
+        if (!tRes.ok) return UI.toast("Test yaratishda xato: " + (tRes.error || ""), "err");
+        relatedTestId = tRes.test_id;
+      }
     }
 
     const fd = new FormData();
@@ -1506,6 +1530,7 @@ const Teacher = {
         document.getElementById("ls-has-test").checked = false;
         document.getElementById("ls-test-builder").style.display = "none";
         document.getElementById("ls-questions").innerHTML = "";
+        const lstf = document.getElementById("ls-test-file"); if (lstf) lstf.value = "";
         this.lessonQuestions = [];
         this.loadLessons();
       } else { prog.textContent = ""; UI.toast(r.error || "Yuklashda xatolik", "err"); }
@@ -1569,6 +1594,10 @@ const Teacher = {
     if (t.role !== "teacher") return null;
     const ac = (t.assigned_classes || "").split(",").map((x) => x.trim()).filter(Boolean);
     return ac.length ? ac : null;
+  },
+  _classesForMe() {
+    // O'qituvchiga biriktirilgan sinflar; admin yoki cheklovsizga — barcha sinflar
+    return this._allowedClasses() || State.meta.classes || [];
   },
 
   deleteLesson(id, title) {
@@ -1929,8 +1958,12 @@ const Teacher = {
           <button class="btn btn-secondary btn-sm" data-creds="${t.id}">🔑 Login/parol</button>
           <button class="btn btn-danger btn-sm" data-del="${t.id}">🗑️ O'chirish</button>`;
       }
+      const credLine = `<div class="pc-creds"><span class="cred-pill">Login: <b>${UI.esc(t.username)}</b></span>${t.password ? `<span class="cred-pill">Parol: <b>${UI.esc(t.password)}</b></span>` : '<span class="muted">parol ko\'rinmaydi (eski hisob)</span>'}</div>`;
+      const countLine = (t.role === "teacher")
+        ? `<div class="sub" style="margin-top:4px">👥 ${t.students_count} o'quvchi • 📌 ${t.classes_count ? t.classes_count + " sinf" : "barcha sinflar"} • 📋 ${t.tests_count} test</div>`
+        : "";
       row.innerHTML = `
-        <div class="pc-info"><b>${UI.esc(t.username)}</b> ${roleTag} ${suspTag} ${t.is_me ? '<span class="chip on">Siz</span>' : ""}</div>
+        <div class="pc-info"><b>${UI.esc(t.username)}</b> ${roleTag} ${suspTag} ${t.is_me ? '<span class="chip on">Siz</span>' : ""}${credLine}${countLine}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${actions}</div>`;
       const del = row.querySelector("[data-del]"); if (del) del.onclick = () => this.deleteTeacher(t.id, t.username);
       const creds = row.querySelector("[data-creds]"); if (creds) creds.onclick = () => this.openTeacherCredentials(t);

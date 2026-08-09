@@ -399,15 +399,19 @@
             <input id="ls-image" class="inp" type="file" accept="image/*">
           </div>
           <div class="field-row">
-            <label class="chk-label"><input type="checkbox" id="ls-has-test"> 📝 Darsdan keyingi test qo'shaman (qo'lda yozaman)</label>
+            <label class="chk-label"><input type="checkbox" id="ls-has-test"> 📝 Darsdan keyingi test qo'shaman</label>
           </div>
           <div id="ls-test-builder" style="display:none">
             <div class="grid-4">
               <div class="field-row"><label>Test vaqti (daqiqa)</label><input id="ls-test-dur" class="inp" type="number" min="1" value="10"></div>
-              <div class="field-row"><label>Savollar soni</label><input id="ls-test-count" class="inp" type="number" min="1" max="50" placeholder="Masalan: 5"></div>
+              <div class="field-row"><label>Savollar soni (qo'lda)</label><input id="ls-test-count" class="inp" type="number" min="1" max="50" placeholder="Masalan: 5"></div>
             </div>
             <button id="ls-open-slots" class="btn btn-secondary btn-sm" type="button">📝 Savol joylarini ochish</button>
             <div id="ls-questions" class="questions-list" style="margin-top:14px"></div>
+            <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--card-border)">
+              <p class="muted" style="margin-bottom:6px">📄 Yoki test savollarini fayldan yuklang (Excel/CSV/Word/PDF). <a href="#" id="ls-test-template" style="color:var(--primary-2);font-weight:700">📥 Namuna faylni yuklab oling</a></p>
+              <div class="field-row"><label>Fayl (.xlsx .csv .docx .pdf)</label><input id="ls-test-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf"></div>
+            </div>
           </div>
           <button id="ls-save" class="btn btn-success">💾 Darsni saqlash</button>
           <div id="ls-progress" class="muted" style="margin-top:8px"></div>

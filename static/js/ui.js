@@ -15,14 +15,17 @@ const UI = {
     const closeBtn = document.getElementById("modal-close");
     if (this._onClose) { const f = this._onClose; this._onClose = null; f(); }
     content.innerHTML = html;
+    content.scrollTop = 0;                       // yangi modal doim boshidan ko'rinsin
     closeBtn.style.display = closable ? "" : "none";
     document.getElementById("modal-box").classList.toggle("modal-lg", large);
     overlay.classList.add("on");
     overlay.dataset.closable = closable ? "1" : "0";
+    document.body.classList.add("modal-open");   // orqa fon scroll qilmasin (sakramasin)
     this._onClose = onClose;
   },
   closeModal() {
     document.getElementById("modal-overlay").classList.remove("on");
+    document.body.classList.remove("modal-open");
     if (this._onClose) { const f = this._onClose; this._onClose = null; f(); }
   },
 

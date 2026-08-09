@@ -778,6 +778,7 @@ select option,
   padding: 20px;
 }
 .modal-overlay.on { display: flex; animation: fadeIn .25s ease; }
+body.modal-open { overflow: hidden; }   /* modal ochiq bo'lsa orqa fon scroll qilmaydi (sakramaydi) */
 .modal {
   position: relative;
   background: var(--card-solid);

@@ -217,6 +217,8 @@ def init_db():
         _ensure_column(conn, "students", "learn_username", "TEXT")
         _ensure_column(conn, "students", "learn_password_hash", "TEXT")
         _ensure_column(conn, "students", "learn_password_plain", "TEXT")
+        # Xodim (o'qituvchi/zavuch) joriy paroli — zavuch/boshqaruv ko'rishi uchun
+        _ensure_column(conn, "teachers", "password_plain", "TEXT")
         # Standart hisob (egasi/owner) yaratamiz (agar hech kim bo'lmasa)
         cur = conn.execute("SELECT COUNT(*) AS c FROM teachers")
         if cur.fetchone()["c"] == 0:

@@ -329,7 +329,8 @@ def teacher_login():
         return jsonify({"ok": True, "teacher": {"id": r["id"], "username": r["username"],
                                                 "is_admin": bool(r["is_admin"]), "role": role,
                                                 "role_label": ROLE_LABELS.get(role, "O'qituvchi"),
-                                                "school_id": school_id, "school_name": school_name}})
+                                                "school_id": school_id, "school_name": school_name,
+                                                "assigned_classes": r["assigned_classes"] or ""}})
     finally:
         conn.close()
 
@@ -435,8 +436,8 @@ def teacher_credentials():
         if exists:
             return jsonify({"ok": False, "error": "Bu login band"}), 400
         conn.execute(
-            "UPDATE teachers SET username = ?, password_hash = ? WHERE id = ?",
-            (new_user, generate_password_hash(new_pass), r["id"]),
+            "UPDATE teachers SET username = ?, password_hash = ?, password_plain = ? WHERE id = ?",
+            (new_user, generate_password_hash(new_pass), new_pass, r["id"]),
         )
         conn.commit()
         session["teacher_name"] = new_user
@@ -771,7 +772,7 @@ def list_students():
 
 
 @app.route("/api/students", methods=["POST"])
-@teacher_required
+@role_required("owner", "zavuch")
 def add_student():
     data = request.get_json(force=True, silent=True) or {}
     first = norm(data.get("first_name"))
@@ -1165,21 +1166,16 @@ def student_start():
             sch = conn.execute("SELECT suspended FROM schools WHERE id = ?", (t_school,)).fetchone()
             if sch and sch["suspended"]:
                 return jsonify({"ok": False, "error": "Bu maktab tizimi vaqtinchalik to'xtatilgan. Zavuch bilan bog'laning."}), 403
-        # O'quvchini shu maktab kontekstида topamiz yoki yaratamiz
+        # O'quvchini shu maktab kontekstида topamiz — faqat ro'yxatga qo'shilganlar kira oladi
         student = conn.execute(
             "SELECT * FROM students WHERE lower(first_name)=lower(?) AND lower(last_name)=lower(?) AND class_name=? AND school_id IS ?",
             (first, last, class_name, t_school),
         ).fetchone()
         if not student:
-            cur = conn.execute(
-                "INSERT INTO students (first_name, last_name, class_name, school_id, created_at) VALUES (?, ?, ?, ?, ?)",
-                (first, last, class_name, t_school, now_iso()),
-            )
-            student_id = cur.lastrowid
-        else:
-            if student["blocked"]:
-                return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
-            student_id = student["id"]
+            return jsonify({"ok": False, "error": "Siz sinf ro'yxatida yo'qsiz. Zavuch/o'qituvchingiz sizni ro'yxatga qo'shishi kerak."}), 403
+        if student["blocked"]:
+            return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
+        student_id = student["id"]
 
         # Avval topshirganmi? (retake ruxsati bo'lmasa — bloklaymiz)
         done = conn.execute(
@@ -2102,12 +2098,24 @@ def list_teachers():
     try:
         if sid is None:
             return jsonify({"ok": True, "teachers": [], "my_role": session.get("role"), "need_school": True})
-        rows = conn.execute("SELECT id, username, role, suspended, assigned_classes, created_at FROM teachers WHERE school_id = ? ORDER BY role, id", (sid,)).fetchall()
-        out = [{"id": r["id"], "username": r["username"], "role": r["role"] or "teacher",
-                "role_label": ROLE_LABELS.get(r["role"] or "teacher", "O'qituvchi"),
-                "suspended": bool(r["suspended"]),
-                "assigned_classes": r["assigned_classes"] or "",
-                "is_me": r["id"] == session.get("teacher_id")} for r in rows]
+        rows = conn.execute("SELECT id, username, password_plain, role, suspended, assigned_classes, created_at FROM teachers WHERE school_id = ? ORDER BY role, id", (sid,)).fetchall()
+        total_students = conn.execute("SELECT COUNT(*) AS c FROM students WHERE school_id = ?", (sid,)).fetchone()["c"]
+        out = []
+        for r in rows:
+            ac = [c.strip() for c in (r["assigned_classes"] or "").split(",") if c.strip()]
+            if ac:
+                ph = ",".join("?" for _ in ac)
+                stu_count = conn.execute("SELECT COUNT(*) AS c FROM students WHERE school_id = ? AND class_name IN (" + ph + ")", [sid] + ac).fetchone()["c"]
+            else:
+                stu_count = total_students  # sinf biriktirilmagan = barcha o'quvchilar
+            test_count = conn.execute("SELECT COUNT(*) AS c FROM tests WHERE created_by = ?", (r["id"],)).fetchone()["c"]
+            out.append({"id": r["id"], "username": r["username"], "role": r["role"] or "teacher",
+                        "role_label": ROLE_LABELS.get(r["role"] or "teacher", "O'qituvchi"),
+                        "suspended": bool(r["suspended"]),
+                        "assigned_classes": r["assigned_classes"] or "",
+                        "password": r["password_plain"],
+                        "classes_count": len(ac), "students_count": stu_count, "tests_count": test_count,
+                        "is_me": r["id"] == session.get("teacher_id")})
         return jsonify({"ok": True, "teachers": out, "my_role": session.get("role")})
     finally:
         conn.close()
@@ -2138,9 +2146,9 @@ def create_teacher():
     try:
         if conn.execute("SELECT 1 FROM teachers WHERE username = ?", (username,)).fetchone():
             return jsonify({"ok": False, "error": "Bu login band"}), 400
-        conn.execute("INSERT INTO teachers (username, password_hash, role, is_admin, school_id, created_at) "
-                     "VALUES (?, ?, ?, ?, ?, ?)",
-                     (username, generate_password_hash(password), req_role, is_admin, sid, now_iso()))
+        conn.execute("INSERT INTO teachers (username, password_hash, password_plain, role, is_admin, school_id, created_at) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                     (username, generate_password_hash(password), password, req_role, is_admin, sid, now_iso()))
         conn.commit()
         return jsonify({"ok": True, "role": req_role})
     finally:
@@ -2262,7 +2270,7 @@ def admin_set_teacher_credentials(teacher_id):
         if new_pass:
             if len(new_pass) < 4:
                 return jsonify({"ok": False, "error": "Parol kamida 4 ta belgi bo'lsin"}), 400
-            conn.execute("UPDATE teachers SET password_hash = ? WHERE id = ?", (generate_password_hash(new_pass), teacher_id))
+            conn.execute("UPDATE teachers SET password_hash = ?, password_plain = ? WHERE id = ?", (generate_password_hash(new_pass), new_pass, teacher_id))
         conn.commit()
         return jsonify({"ok": True, "username": new_user or t["username"]})
     finally:
@@ -2281,7 +2289,7 @@ def reset_teacher_password(teacher_id):
         t, err = _my_teacher(conn, teacher_id)
         if err:
             return err
-        conn.execute("UPDATE teachers SET password_hash = ? WHERE id = ?", (generate_password_hash(password), teacher_id))
+        conn.execute("UPDATE teachers SET password_hash = ?, password_plain = ? WHERE id = ?", (generate_password_hash(password), password, teacher_id))
         conn.commit()
         return jsonify({"ok": True})
     finally:
@@ -2717,9 +2725,9 @@ def create_school():
         if conn.execute("SELECT 1 FROM teachers WHERE username=?", (username,)).fetchone():
             return jsonify({"ok": False, "error": "Bu login band"}), 400
         sid = conn.execute("INSERT INTO schools (name, created_at) VALUES (?, ?)", (name, now_iso())).lastrowid
-        conn.execute("INSERT INTO teachers (username, password_hash, is_admin, role, school_id, created_at) "
-                     "VALUES (?, ?, 1, 'zavuch', ?, ?)",
-                     (username, generate_password_hash(password), sid, now_iso()))
+        conn.execute("INSERT INTO teachers (username, password_hash, password_plain, is_admin, role, school_id, created_at) "
+                     "VALUES (?, ?, ?, 1, 'zavuch', ?, ?)",
+                     (username, generate_password_hash(password), password, sid, now_iso()))
         conn.commit()
         return jsonify({"ok": True, "school_id": sid, "username": username, "password": password})
     finally:
