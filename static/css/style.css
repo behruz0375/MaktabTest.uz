@@ -688,8 +688,11 @@ select option,
   box-shadow: var(--shadow-soft);
   transition: var(--trans);
   cursor: pointer;
+  flex-wrap: wrap;                 /* joy tor bo'lsa tugmalar pastga tushadi (ustma-ust chiqmaydi) */
 }
 .student-row:hover { border-color: var(--primary-1); box-shadow: 0 8px 22px var(--glow); }
+/* Qatordagi amal tugmalari — hech qachon matn ustiga chiqmaydi */
+.row-actions { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; margin-left: auto; align-items: center; }
 .student-avatar {
   width: 46px; height: 46px; flex-shrink: 0;
   display: grid; place-items: center;
@@ -697,7 +700,7 @@ select option,
   background: linear-gradient(135deg, var(--primary-1), var(--primary-2));
   color: #fff; font-weight: 800; font-size: 1.1rem;
 }
-.student-info { flex: 1; min-width: 0; }
+.student-info { flex: 1 1 200px; min-width: 180px; }
 .student-info .name { font-weight: 700; font-size: 1.05rem; }
 .student-info .sub { color: var(--muted); font-size: .85rem; }
 .status-pill { padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: .82rem; white-space: nowrap; }
@@ -1170,6 +1173,7 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
   padding: 16px 18px; color: var(--muted); font-size: .95rem; margin-bottom: 14px;
 }
 .empty-note b { color: var(--text); }
+.code-cell { font-family: ui-monospace, "Courier New", monospace; letter-spacing: 1px; color: var(--primary-2); }
 
 /* Oxirgi 7 kun faolligi diagrammasi */
 .chart7-box { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; }
@@ -1226,10 +1230,12 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 
 /* Ota-ona login kartasi */
 .parent-cred {
-  display: flex; align-items: center; gap: 14px; padding: 14px 18px;
+  display: flex; align-items: flex-start; gap: 14px; padding: 14px 18px;
   background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); box-shadow: var(--shadow-soft); flex-wrap: wrap;
 }
-.parent-cred .pc-info { flex: 1; min-width: 160px; }
+.parent-cred .pc-info { flex: 1 1 260px; min-width: 200px; display: flex; flex-direction: column; gap: 6px; }
+.parent-cred .pc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.parent-cred .pc-actions { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
 .parent-cred .pc-creds { display: flex; gap: 10px; flex-wrap: wrap; }
 .cred-pill { background: var(--inp-bg); border: 1px solid var(--inp-border); border-radius: 10px; padding: 6px 12px; font-family: monospace; font-weight: 700; }
 .cred-pill b { color: var(--primary-2); }

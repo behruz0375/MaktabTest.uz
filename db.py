@@ -221,6 +221,8 @@ def init_db():
         _ensure_column(conn, "teachers", "password_plain", "TEXT")
         # O'qituvchiga biriktirilgan fanlar (bo'sh = hammasi)
         _ensure_column(conn, "teachers", "assigned_subjects", "TEXT DEFAULT ''")
+        # Test qayta topshirilganmi (bir test = bitta tarix yozuvi, yangilanadi)
+        _ensure_column(conn, "submissions", "retaken", "INTEGER DEFAULT 0")
         # Standart hisob (egasi/owner) yaratamiz (agar hech kim bo'lmasa)
         cur = conn.execute("SELECT COUNT(*) AS c FROM teachers")
         if cur.fetchone()["c"] == 0:

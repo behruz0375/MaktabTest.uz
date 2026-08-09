@@ -1126,18 +1126,20 @@ const Teacher = {
         const status = sub.status === "terminated"
           ? `<span class="status-pill danger">⚠️ ${UI.esc(sub.violation_reason || "Xavf")}</span>`
           : `<span class="status-pill done">✔ Topshirildi</span>`;
+        const retakeTag = sub.retaken ? '<span class="status-pill" style="background:#f8a928;color:#111;display:block;margin-bottom:4px">🔁 Qayta topshirdi</span>' : "";
         return `<tr>
           <td>${UI.esc(sub.submitted_at || "-")}</td>
           <td><b>${UI.esc(sub.test_title)}</b><br><span class="muted">${UI.esc(sub.subject)}</span></td>
+          <td><b class="code-cell">${UI.esc(sub.code || "-")}</b></td>
           <td><b>${sub.score}/${sub.total}</b></td>
           <td>${sub.percentage}%</td>
           <td>${this.fmtDur(sub.duration_seconds)}</td>
-          <td>${status}</td>
+          <td>${retakeTag}${status}</td>
           <td><button class="btn btn-secondary btn-sm" data-retake="${sub.test_id}">🔁 Qayta</button></td>
         </tr>`;
       }).join("");
       body = `<div style="overflow-x:auto"><table class="sub-table">
-        <thead><tr><th>Sana/vaqt</th><th>Test</th><th>Ball</th><th>Foiz</th><th>Davomiylik</th><th>Holat</th><th>Amal</th></tr></thead>
+        <thead><tr><th>Sana/vaqt</th><th>Test</th><th>Kod</th><th>Ball</th><th>Foiz</th><th>Davomiylik</th><th>Holat</th><th>Amal</th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
     UI.modal(`
@@ -1191,7 +1193,7 @@ const Teacher = {
           <div class="sub">${UI.esc(s.class_name)}</div>
           ${learnInfo}
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="row-actions">
           ${editBtn}
           ${learnBtn}
           ${parentBtn}
@@ -1979,8 +1981,11 @@ const Teacher = {
         ? `<div class="sub" style="margin-top:4px">👥 ${t.students_count} o'quvchi • 📌 ${t.classes_count ? t.classes_count + " sinf" : "barcha sinflar"} • 📚 ${t.assigned_subjects ? UI.esc(t.assigned_subjects) : "barcha fanlar"} • 📋 ${t.tests_count} test</div>`
         : "";
       row.innerHTML = `
-        <div class="pc-info"><b>${UI.esc(t.username)}</b> ${roleTag} ${suspTag} ${t.is_me ? '<span class="chip on">Siz</span>' : ""}${credLine}${countLine}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${actions}</div>`;
+        <div class="pc-info">
+          <div class="pc-head"><b>${UI.esc(t.username)}</b> ${roleTag} ${suspTag} ${t.is_me ? '<span class="chip on">Siz</span>' : ""}</div>
+          ${credLine}${countLine}
+        </div>
+        <div class="pc-actions">${actions}</div>`;
       const del = row.querySelector("[data-del]"); if (del) del.onclick = () => this.deleteTeacher(t.id, t.username);
       const creds = row.querySelector("[data-creds]"); if (creds) creds.onclick = () => this.openTeacherCredentials(t);
       const susp = row.querySelector("[data-susp]"); if (susp) susp.onclick = () => this.suspendTeacher(t);

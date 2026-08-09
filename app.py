@@ -614,6 +614,9 @@ def create_test():
         denied = teacher_class_denied(conn, parsed["class_name"]) or teacher_subject_denied(conn, parsed["subject"])
         if denied:
             return denied
+        # Shu maktabда shu nomli test bormi?
+        if conn.execute("SELECT 1 FROM tests WHERE lower(title) = lower(?) AND school_id = ?", (parsed["title"], sid)).fetchone():
+            return jsonify({"ok": False, "error": "Bu nomdagi test allaqachon bor. Nomini o'zgartiring."}), 400
         code = unique_code(conn)
         cur = conn.execute(
             "INSERT INTO tests (title, subject, class_name, duration_minutes, code, is_active, school_id, created_by, created_at) "
@@ -923,12 +926,13 @@ def delete_student(student_id):
 
 
 def _submission_summary(conn, sub):
-    t = conn.execute("SELECT title, subject, class_name FROM tests WHERE id = ?", (sub["test_id"],)).fetchone()
+    t = conn.execute("SELECT title, subject, class_name, code FROM tests WHERE id = ?", (sub["test_id"],)).fetchone()
     return {
         "id": sub["id"],
         "test_id": sub["test_id"],
         "test_title": t["title"] if t else "(o'chirilgan test)",
         "subject": t["subject"] if t else "-",
+        "code": t["code"] if t else "-",
         "status": sub["status"],
         "score": sub["score"],
         "total": sub["total"],
@@ -939,6 +943,7 @@ def _submission_summary(conn, sub):
         "started_at": sub["started_at"],
         "submitted_at": sub["submitted_at"],
         "duration_seconds": sub["duration_seconds"],
+        "retaken": bool(sub["retaken"]) if "retaken" in sub.keys() else False,
     }
 
 
@@ -1228,16 +1233,21 @@ def student_start():
             sch = conn.execute("SELECT suspended FROM schools WHERE id = ?", (t_school,)).fetchone()
             if sch and sch["suspended"]:
                 return jsonify({"ok": False, "error": "Bu maktab tizimi vaqtinchalik to'xtatilgan. Zavuch bilan bog'laning."}), 403
-        # O'quvchini shu maktab kontekstида topamiz — faqat ro'yxatga qo'shilganlar kira oladi
+        # O'quvchini shu maktab kontekstида topamiz yoki avtomatik ro'yxatga qo'shamiz
         student = conn.execute(
             "SELECT * FROM students WHERE lower(first_name)=lower(?) AND lower(last_name)=lower(?) AND class_name=? AND school_id IS ?",
             (first, last, class_name, t_school),
         ).fetchone()
         if not student:
-            return jsonify({"ok": False, "error": "Siz sinf ro'yxatida yo'qsiz. Zavuch/o'qituvchingiz sizni ro'yxatga qo'shishi kerak."}), 403
-        if student["blocked"]:
-            return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
-        student_id = student["id"]
+            cur = conn.execute(
+                "INSERT INTO students (first_name, last_name, class_name, school_id, created_at) VALUES (?, ?, ?, ?, ?)",
+                (first, last, class_name, t_school, now_iso()),
+            )
+            student_id = cur.lastrowid
+        else:
+            if student["blocked"]:
+                return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
+            student_id = student["id"]
 
         # Avval topshirganmi? (retake ruxsati bo'lmasa — bloklaymiz)
         done = conn.execute(
@@ -1250,9 +1260,11 @@ def student_start():
         ).fetchone()
         if done and not grant:
             return jsonify({"ok": False, "error": "Siz bu testni allaqachon topshirgansiz. Test yakunlangan."}), 403
+        retake_mode = False
         if done and grant:
             # Qayta topshirish ruxsatini ishlatamiz
             conn.execute("DELETE FROM retake_grants WHERE id = ?", (grant["id"],))
+            retake_mode = True
 
         # Eski tugatilmagan (in_progress) urinishlarni tozalaymiz
         conn.execute(
@@ -1264,12 +1276,22 @@ def student_start():
             "SELECT * FROM questions WHERE test_id = ? ORDER BY order_index", (test["id"],)
         ).fetchall()
         token = secrets.token_hex(16)
-        cur = conn.execute(
-            "INSERT INTO submissions (test_id, student_id, token, status, total, started_at) "
-            "VALUES (?, ?, ?, 'in_progress', ?, ?)",
-            (test["id"], student_id, token, len(qs), now_iso()),
-        )
-        submission_id = cur.lastrowid
+        if retake_mode and done:
+            # Yangi tarix qo'shilmaydi — o'sha yozuv yangilanadi, "qayta topshirdi" belgilanadi
+            conn.execute(
+                "UPDATE submissions SET status='in_progress', token=?, started_at=?, submitted_at=NULL, "
+                "answers_json=NULL, score=0, correct_count=0, wrong_count=0, percentage=0, "
+                "violation_reason=NULL, duration_seconds=0, retaken=1, total=? WHERE id=?",
+                (token, now_iso(), len(qs), done["id"]),
+            )
+            submission_id = done["id"]
+        else:
+            cur = conn.execute(
+                "INSERT INTO submissions (test_id, student_id, token, status, total, started_at) "
+                "VALUES (?, ?, ?, 'in_progress', ?, ?)",
+                (test["id"], student_id, token, len(qs), now_iso()),
+            )
+            submission_id = cur.lastrowid
         conn.commit()
 
         questions = [{
@@ -1795,10 +1817,32 @@ def learning_start_test():
         test = conn.execute("SELECT * FROM tests WHERE id = ?", (l["related_test_id"],)).fetchone()
         if not test:
             return jsonify({"ok": False, "error": "Test topilmadi"}), 404
-        # Darsdan keyingi testni qayta-qayta topshirish mumkin (bloklanmaydi)
+        # Darsdan keyingi testni qayta-qayta topshirish mumkin — yangi tarix qo'shilmaydi, o'sha yozuv yangilanadi
         conn.execute("DELETE FROM retake_grants WHERE test_id = ? AND student_id = ?", (test["id"], s["id"]))
         conn.execute("DELETE FROM submissions WHERE test_id = ? AND student_id = ? AND status = 'in_progress'", (test["id"], s["id"]))
-        payload = _make_submission(conn, test, s)
+        done = conn.execute("SELECT * FROM submissions WHERE test_id = ? AND student_id = ? AND status != 'in_progress'", (test["id"], s["id"])).fetchone()
+        qs = conn.execute("SELECT * FROM questions WHERE test_id = ? ORDER BY order_index", (test["id"],)).fetchall()
+        token = secrets.token_hex(16)
+        if done:
+            conn.execute(
+                "UPDATE submissions SET status='in_progress', token=?, started_at=?, submitted_at=NULL, "
+                "answers_json=NULL, score=0, correct_count=0, wrong_count=0, percentage=0, "
+                "violation_reason=NULL, duration_seconds=0, retaken=1, total=? WHERE id=?",
+                (token, now_iso(), len(qs), done["id"]),
+            )
+            submission_id = done["id"]
+        else:
+            cur = conn.execute(
+                "INSERT INTO submissions (test_id, student_id, token, status, total, started_at) VALUES (?, ?, ?, 'in_progress', ?, ?)",
+                (test["id"], s["id"], token, len(qs), now_iso()),
+            )
+            submission_id = cur.lastrowid
+        questions = [{"id": q["id"], "text": q["text"], "option_a": q["option_a"], "option_b": q["option_b"],
+                      "option_c": q["option_c"], "option_d": q["option_d"]} for q in qs]
+        payload = {"ok": True, "submission_id": submission_id, "token": token,
+                   "test": {"id": test["id"], "title": test["title"], "subject": test["subject"],
+                            "class_name": test["class_name"], "duration_minutes": test["duration_minutes"], "questions": questions},
+                   "student": {"id": s["id"], "first_name": s["first_name"], "last_name": s["last_name"], "class_name": s["class_name"]}}
         conn.commit()
         return jsonify(payload)
     finally:
