@@ -53,7 +53,8 @@ const Teacher = {
       const el = document.getElementById(inputId);
       if (el) el.oninput = () => this._filterList(inputId, listId, itemSel);
     };
-    wireSearch("tests-search", "tests-list", ".test-card");
+    const tsEl = document.getElementById("tests-search");
+    if (tsEl) tsEl.oninput = () => this._filterTests();
     wireSearch("lessons-search", "lessons-admin-list", ".test-card");
     wireSearch("students-search", "students-list", ".student-row");
     // Maktab ma'lumotlarini tozalash (zavuch/boshqaruv)
@@ -670,6 +671,7 @@ const Teacher = {
     res.tests.forEach((t) => {
       const card = document.createElement("div");
       card.className = "test-card";
+      card.dataset.class = t.class_name;
       card.innerHTML = `
         <h3>${UI.esc(t.title)}</h3>
         <div class="chips">
@@ -682,6 +684,7 @@ const Teacher = {
         <div class="code-big">${t.code}</div>
         <div class="muted" style="text-align:center">Topshirganlar: ${t.submission_count} ta</div>
         <div class="card-actions">
+          <button class="btn btn-secondary btn-sm" data-act="edit">✏️ Tahrirlash</button>
           <button class="btn btn-secondary btn-sm" data-act="code">🔄 Yangi kod</button>
           <button class="btn btn-ghost btn-sm" data-act="toggle">${t.is_active ? "⏸️ Yopish" : "▶️ Ochish"}</button>
           ${t.is_active ? '<button class="btn btn-danger btn-sm" data-act="stop">⏹️ To\'xtatish</button>' : ""}
@@ -690,6 +693,7 @@ const Teacher = {
           <button class="btn btn-danger btn-sm" data-act="del">🗑️ O'chirish</button>
         </div>
       `;
+      card.querySelector('[data-act="edit"]').onclick = () => this.openTestEdit(t);
       card.querySelector('[data-act="code"]').onclick = () => this.regenCode(t.id);
       card.querySelector('[data-act="toggle"]').onclick = () => this.toggleTest(t.id);
       const stopBtn = card.querySelector('[data-act="stop"]');
@@ -699,7 +703,75 @@ const Teacher = {
       card.querySelector('[data-act="del"]').onclick = () => this.deleteTest(t.id, t.title);
       box.appendChild(card);
     });
-    this._filterList("tests-search", "tests-list", ".test-card");
+    this._populateTestsClassFilter();
+    this._filterTests();
+  },
+
+  _populateTestsClassFilter() {
+    const sel = document.getElementById("tests-class-filter");
+    if (!sel || sel.dataset.done === "1") return;
+    const classes = this._allowedClasses() || State.meta.classes || [];
+    classes.forEach((c) => { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); });
+    sel.dataset.done = "1";
+    sel.onchange = () => this._filterTests();
+  },
+
+  _filterTests() {
+    const search = document.getElementById("tests-search");
+    const clsSel = document.getElementById("tests-class-filter");
+    const q = search ? search.value.trim().toLowerCase() : "";
+    const cls = clsSel ? clsSel.value : "";
+    const list = document.getElementById("tests-list");
+    if (!list) return;
+    let shown = 0;
+    list.querySelectorAll(".test-card").forEach((el) => {
+      const textOk = !q || el.textContent.toLowerCase().includes(q);
+      const clsOk = !cls || el.dataset.class === cls;
+      const ok = textOk && clsOk;
+      el.style.display = ok ? "" : "none";
+      if (ok) shown++;
+    });
+    let empty = list.querySelector(".search-empty");
+    if ((q || cls) && shown === 0) {
+      if (!empty) { empty = document.createElement("p"); empty.className = "muted search-empty"; list.appendChild(empty); }
+      empty.textContent = "🔎 Bu shartlarга mos test topilmadi.";
+      empty.style.display = "";
+    } else if (empty) { empty.style.display = "none"; }
+  },
+
+  openTestEdit(t) {
+    const subjOpts = (State.meta.subjects || []).map((x) => `<option value="${UI.esc(x)}" ${x === t.subject ? "selected" : ""}>${UI.esc(x)}</option>`).join("");
+    const allowed = this._allowedClasses();
+    const clsList = allowed || (State.meta.classes || []);
+    // Joriy sinf ro'yxatда bo'lmasa ham ko'rsatamiz (biriktirilmagan bo'lsa)
+    const clsSet = clsList.includes(t.class_name) ? clsList : [t.class_name, ...clsList];
+    const clsOpts = clsSet.map((c) => `<option value="${UI.esc(c)}" ${c === t.class_name ? "selected" : ""}>${UI.esc(c)}</option>`).join("");
+    UI.modal(`
+      <span class="modal-icon">✏️</span>
+      <h2 style="text-align:center">Testni tahrirlash</h2>
+      <div class="field-row"><label>Test nomi</label><input id="te-title" class="inp" value="${UI.esc(t.title)}"></div>
+      <div class="grid-4">
+        <div class="field-row"><label>Fan</label><select id="te-subject" class="inp">${subjOpts}</select></div>
+        <div class="field-row"><label>Sinf</label><select id="te-class" class="inp">${clsOpts}</select></div>
+        <div class="field-row"><label>Vaqt (daqiqa)</label><input id="te-duration" class="inp" type="number" min="1" value="${t.duration_minutes}"></div>
+      </div>
+      <p class="muted" style="font-size:.85rem">Savollar o'zgarmaydi. Savol qo'shish/o'chirish uchun alohida tugmalar bor.</p>
+      <div style="text-align:center;margin-top:10px"><button class="btn btn-success" id="te-save">💾 Saqlash</button></div>
+    `, { large: true });
+    document.getElementById("te-save").onclick = async () => {
+      const payload = {
+        title: document.getElementById("te-title").value.trim(),
+        subject: document.getElementById("te-subject").value,
+        class_name: document.getElementById("te-class").value,
+        duration_minutes: parseInt(document.getElementById("te-duration").value, 10),
+      };
+      if (!payload.title) return UI.toast("Test nomini kiriting", "err");
+      const res = await API.post(`/api/tests/${t.id}/meta`, payload);
+      if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+      UI.closeModal();
+      UI.toast("Test yangilandi ✔", "ok");
+      this.loadTests();
+    };
   },
 
   async regenCode(id) {
@@ -895,6 +967,17 @@ const Teacher = {
       return;
     }
     box.innerHTML = "";
+    // Fan tanlangan bo'lsa, lekin bu fandan test qo'shilmagan bo'lsa — xabar
+    if (subj && res.test_subjects && !res.test_subjects.includes(subj)) {
+      box.innerHTML = `<div class="empty-note">📭 <b>${UI.esc(subj)}</b> fanidan hali test qo'shilmagan. Test qo'shsangiz, natijalar shu yerda ko'rinadi.</div>`;
+      return;
+    }
+    // Bu sinf(lar) uchun umuman test qo'shilmagan bo'lsa — xabar (o'quvchilar ro'yxati baribir ko'rinadi)
+    let noteHtml = "";
+    if (!subj && res.test_subjects && res.test_subjects.length === 0) {
+      noteHtml = `<div class="empty-note">📭 ${isAll ? "Sinflar" : UI.esc(cls) + " sinfi"} uchun hali test qo'shilmagan. Test qo'shsangiz, natijalar shu yerda ko'rinadi.</div>`;
+    }
+    if (noteHtml) box.innerHTML = noteHtml;
     // Fan bo'yicha filtr (mijoz tomonида)
     const prep = res.students.map((s) => {
       const subs = subj ? s.submissions.filter((x) => x.subject === subj) : s.submissions;
@@ -1535,10 +1618,18 @@ const Teacher = {
     }
     if (!res.students.length) { box.innerHTML = '<p class="muted">Bu sinfda hali o\'quvchi yo\'q.' + (isAdmin && !isAll ? ' Yuqoridan qo\'shing.' : '') + '</p>'; return; }
     box.innerHTML = "";
+    // Fan tanlangan, lekin bu fandan dars qo'shilmagan — xabar + reytingsiz ro'yxat
+    const noRank = subj && res.has_content === false;
+    if (noRank) {
+      const note = document.createElement("div");
+      note.className = "empty-note";
+      note.innerHTML = `📭 <b>${UI.esc(subj)}</b> fanidan hali dars qo'shilmagan. Dars qo'shilsa, reyting shu yerda paydo bo'ladi.`;
+      box.appendChild(note);
+    }
     res.students.forEach((s, i) => {
       const rank = i + 1;
-      const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : rank;
-      const badgeCls = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
+      const medal = noRank ? "•" : (rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : rank);
+      const badgeCls = noRank ? "" : (rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "");
       const durTxt = s.total_duration_seconds > 0 ? ` • ⏱ jami ${this.fmtDurLong(s.total_duration_seconds)}` : "";
       const monthTxt = s.month_duration_seconds > 0 ? ` • 📅 shu oy ${this.fmtDurLong(s.month_duration_seconds)}` : "";
       const faollikTxt = (s.faollik_pct != null) ? ` • 📈 faollik ${s.faollik_pct}% (${s.done_lessons}/${s.total_lessons})` : "";

@@ -346,7 +346,10 @@
           <button id="tests-import-btn" class="btn btn-secondary btn-sm">📄 Fayldan test qo'shish</button>
         </div>
         <p class="muted" style="margin-bottom:14px">Eski testlaringiz saqlanadi. Yangi test (Excel/Word/PDF yoki qo'lda) qo'shsangiz ro'yxatga qo'shiladi. Har testда ⏹️ To'xtatish va 🗑️ O'chirish bor.</p>
-        <input id="tests-search" class="inp search-inp" placeholder="🔎 Test qidirish (nomi, fan, sinf yoki kod)...">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <input id="tests-search" class="inp search-inp" style="flex:1;min-width:180px;margin-bottom:0" placeholder="🔎 Test qidirish (nomi, fan yoki kod)...">
+          <select id="tests-class-filter" class="inp" style="max-width:200px"><option value="">🏫 Barcha sinflar</option></select>
+        </div>
         <div id="tests-list" class="cards-grid"></div>
       </section>
 

@@ -651,6 +651,46 @@ def toggle_test(test_id):
         conn.close()
 
 
+@app.route("/api/tests/<int:test_id>/meta", methods=["POST"])
+@teacher_required
+def update_test_meta(test_id):
+    """Testning nomi, fani, sinfi va vaqtini tahrirlaydi (savollarga tegmaydi).
+    O'qituvchi sinfni faqat o'ziga biriktirilgan sinflarга o'zgartira oladi; zavuch/boshqaruv — istalganга."""
+    data = request.get_json(force=True, silent=True) or {}
+    conn = get_conn()
+    try:
+        r = conn.execute("SELECT * FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not r:
+            return jsonify({"ok": False, "error": "Test topilmadi"}), 404
+        sid = scope_school_id()
+        if sid is not None and r["school_id"] != sid:
+            return jsonify({"ok": False, "error": "Bu boshqa maktab testi"}), 403
+        title = norm(data.get("title")) or r["title"]
+        subject = norm(data.get("subject")) or r["subject"]
+        class_name = norm(data.get("class_name")) or r["class_name"]
+        try:
+            duration = int(data.get("duration_minutes"))
+        except (TypeError, ValueError):
+            duration = r["duration_minutes"]
+        if subject not in SUBJECTS:
+            return jsonify({"ok": False, "error": "Fan noto'g'ri"}), 400
+        if class_name not in CLASSES:
+            return jsonify({"ok": False, "error": "Sinf noto'g'ri"}), 400
+        if duration < 1:
+            return jsonify({"ok": False, "error": "Vaqtni to'g'ri belgilang"}), 400
+        # O'qituvchi begona sinfga o'zgartira olmaydi
+        if class_name != r["class_name"]:
+            denied = teacher_class_denied(conn, class_name)
+            if denied:
+                return denied
+        conn.execute("UPDATE tests SET title = ?, subject = ?, class_name = ?, duration_minutes = ? WHERE id = ?",
+                     (title, subject, class_name, duration, test_id))
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
+
+
 @app.route("/api/tests/<int:test_id>/start", methods=["POST"])
 @teacher_required
 def start_test(test_id):
@@ -919,7 +959,13 @@ def results():
                 "baho": baho_from_pct(best_pct),
                 "blocked": bool(s["blocked"]),
             })
-        return jsonify({"ok": True, "class_name": class_name, "students": out})
+        # Shu sinf(lar)да qaysi fanlardan test bor (fan filtri uchun)
+        if all_classes:
+            ts_rows = conn.execute("SELECT DISTINCT subject FROM tests WHERE 1=1" + sc_, sp_).fetchall()
+        else:
+            ts_rows = conn.execute("SELECT DISTINCT subject FROM tests WHERE class_name = ?" + sc_, [class_name] + sp_).fetchall()
+        test_subjects = [r["subject"] for r in ts_rows]
+        return jsonify({"ok": True, "class_name": class_name, "students": out, "test_subjects": test_subjects})
     finally:
         conn.close()
 
@@ -1676,12 +1722,8 @@ def learning_start_test():
         test = conn.execute("SELECT * FROM tests WHERE id = ?", (l["related_test_id"],)).fetchone()
         if not test:
             return jsonify({"ok": False, "error": "Test topilmadi"}), 404
-        done = conn.execute("SELECT * FROM submissions WHERE test_id = ? AND student_id = ? AND status != 'in_progress'", (test["id"], s["id"])).fetchone()
-        grant = conn.execute("SELECT * FROM retake_grants WHERE test_id = ? AND student_id = ?", (test["id"], s["id"])).fetchone()
-        if done and not grant:
-            return jsonify({"ok": False, "error": "Siz bu testni allaqachon topshirgansiz."}), 403
-        if done and grant:
-            conn.execute("DELETE FROM retake_grants WHERE id = ?", (grant["id"],))
+        # Darsdan keyingi testni qayta-qayta topshirish mumkin (bloklanmaydi)
+        conn.execute("DELETE FROM retake_grants WHERE test_id = ? AND student_id = ?", (test["id"], s["id"]))
         conn.execute("DELETE FROM submissions WHERE test_id = ? AND student_id = ? AND status = 'in_progress'", (test["id"], s["id"]))
         payload = _make_submission(conn, test, s)
         conn.commit()
@@ -1784,7 +1826,9 @@ def learning_results():
                 "learn_password": s["learn_password_plain"] if is_admin else None,
             })
         out.sort(key=lambda x: -x["coins"])
-        return jsonify({"ok": True, "class_name": class_name, "subject": subject, "students": out})
+        # Tanlangan fanda dars bor-yo'qligi (fan filtri xabari uchun)
+        has_content = (sum(lesson_totals.values()) > 0) if subject else True
+        return jsonify({"ok": True, "class_name": class_name, "subject": subject, "students": out, "has_content": has_content})
     finally:
         conn.close()
 
