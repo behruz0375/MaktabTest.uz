@@ -8,7 +8,7 @@ import csv
 import json
 import secrets
 import functools
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Flask, request, jsonify, session, send_from_directory, send_file, Response, abort
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -217,6 +217,30 @@ def teacher_class_denied(conn, class_name):
     return None
 
 
+def get_teacher_subjects(conn, teacher_id):
+    """O'qituvchiga biriktirilgan fanlar (bo'sh = hammasi)."""
+    row = conn.execute("SELECT assigned_subjects FROM teachers WHERE id = ?", (teacher_id,)).fetchone()
+    if not row or not row["assigned_subjects"]:
+        return []
+    return [s.strip() for s in row["assigned_subjects"].split(",") if s.strip()]
+
+
+def teacher_allowed_subjects(conn):
+    """Joriy foydalanuvchi ishlata oladigan fanlar. None = cheklovsiz."""
+    if session.get("role", "teacher") != "teacher":
+        return None
+    allowed = get_teacher_subjects(conn, session["teacher_id"])
+    return allowed or None
+
+
+def teacher_subject_denied(conn, subject):
+    """O'qituvchi shu fanga ruxsatsiz bo'lsa xatolik javobini qaytaradi, aks holda None."""
+    allowed = teacher_allowed_subjects(conn)
+    if allowed is not None and subject not in allowed:
+        return jsonify({"ok": False, "error": "Sizga bu fan biriktirilmagan"}), 403
+    return None
+
+
 def add_daily_time(conn, student_id, seconds):
     """Bugungi kunga o'quvchining sarflagan vaqtini (soniya) qo'shadi."""
     if not seconds or seconds <= 0:
@@ -330,7 +354,8 @@ def teacher_login():
                                                 "is_admin": bool(r["is_admin"]), "role": role,
                                                 "role_label": ROLE_LABELS.get(role, "O'qituvchi"),
                                                 "school_id": school_id, "school_name": school_name,
-                                                "assigned_classes": r["assigned_classes"] or ""}})
+                                                "assigned_classes": r["assigned_classes"] or "",
+                                                "assigned_subjects": r["assigned_subjects"] or ""}})
     finally:
         conn.close()
 
@@ -357,8 +382,9 @@ def teacher_me():
             conn.close()
     conn2 = get_conn()
     try:
-        ac_row = conn2.execute("SELECT assigned_classes FROM teachers WHERE id = ?", (session["teacher_id"],)).fetchone()
+        ac_row = conn2.execute("SELECT assigned_classes, assigned_subjects FROM teachers WHERE id = ?", (session["teacher_id"],)).fetchone()
         ac = ac_row["assigned_classes"] if ac_row else ""
+        asub = ac_row["assigned_subjects"] if ac_row else ""
     finally:
         conn2.close()
     return jsonify({"ok": True, "teacher": {"id": session["teacher_id"], "username": session.get("teacher_name"),
@@ -366,7 +392,7 @@ def teacher_me():
                                             "role_label": ROLE_LABELS.get(role, "O'qituvchi"),
                                             "school_id": session.get("school_id"), "school_name": session.get("school_name"),
                                             "view_school_id": view_sid, "view_school_name": view_name,
-                                            "assigned_classes": ac or ""}})
+                                            "assigned_classes": ac or "", "assigned_subjects": asub or ""}})
 
 
 @app.route("/api/profile")
@@ -400,13 +426,42 @@ def profile():
         schools = None
         if role == "owner":
             schools = conn.execute("SELECT COUNT(*) AS c FROM schools").fetchone()["c"]
+        submissions = conn.execute("SELECT COUNT(*) AS c FROM submissions WHERE status != 'in_progress' AND " + ("1=1" if scope_school_id() is None else "test_id IN (SELECT id FROM tests WHERE school_id = ?)"),
+                                   ([] if scope_school_id() is None else [scope_school_id()])).fetchone()["c"]
+        # Xodimlar soni (admin uchun)
+        teachers_cnt = None
+        if role in ("owner", "zavuch", "director"):
+            if scope_school_id() is None:
+                teachers_cnt = conn.execute("SELECT COUNT(*) AS c FROM teachers WHERE role = 'teacher'").fetchone()["c"]
+            else:
+                teachers_cnt = conn.execute("SELECT COUNT(*) AS c FROM teachers WHERE role = 'teacher' AND school_id = ?", (scope_school_id(),)).fetchone()["c"]
+        # Saytdan foydalanish vaqti (bilim olish) — kunlik/haftalik/oylik/jami
+        stu_scope = "student_id IN (SELECT id FROM students WHERE 1=1" + sc_ + ")"
+        today = datetime.now().strftime("%Y-%m-%d")
+        week_ago = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+        ym = datetime.now().strftime("%Y-%m")
+        usage = {
+            "today": conn.execute("SELECT COALESCE(SUM(seconds),0) AS s FROM learning_daily WHERE " + stu_scope + " AND date = ?", sp_ + [today]).fetchone()["s"],
+            "week": conn.execute("SELECT COALESCE(SUM(seconds),0) AS s FROM learning_daily WHERE " + stu_scope + " AND date >= ?", sp_ + [week_ago]).fetchone()["s"],
+            "month": conn.execute("SELECT COALESCE(SUM(seconds),0) AS s FROM learning_daily WHERE " + stu_scope + " AND substr(date,1,7) = ?", sp_ + [ym]).fetchone()["s"],
+            "total": conn.execute("SELECT COALESCE(SUM(seconds),0) AS s FROM learning_daily WHERE " + stu_scope, sp_).fetchone()["s"],
+        }
+        # Tur bo'yicha (video/audio/matn) vaqtlari
+        dur_rows = conn.execute("SELECT type, COALESCE(SUM(duration_seconds),0) AS d FROM learning_activity WHERE " + stu_scope + " GROUP BY type", sp_).fetchall()
+        media = {"video": 0, "audio": 0, "text": 0}
+        for dr in dur_rows:
+            if dr["type"] in media:
+                media[dr["type"]] = dr["d"]
         return jsonify({"ok": True, "profile": {
             "username": t["username"], "role": role, "role_label": ROLE_LABELS.get(role, "O'qituvchi"),
             "is_admin": bool(session.get("is_admin")),
             "school_name": school_name,
             "assigned_classes": t["assigned_classes"] or "",
+            "assigned_subjects": t["assigned_subjects"] or "",
             "created_at": t["created_at"],
-            "counts": {"students": students, "tests": tests, "lessons": lessons, "my_tests": my_tests, "schools": schools},
+            "counts": {"students": students, "tests": tests, "lessons": lessons, "my_tests": my_tests,
+                       "schools": schools, "submissions": submissions, "teachers": teachers_cnt},
+            "usage": usage, "media": media,
         }})
     finally:
         conn.close()
@@ -556,6 +611,9 @@ def create_test():
         return jsonify({"ok": False, "error": "Avval maktabga kiring (Maktablar bo'limidan)"}), 400
     conn = get_conn()
     try:
+        denied = teacher_class_denied(conn, parsed["class_name"]) or teacher_subject_denied(conn, parsed["subject"])
+        if denied:
+            return denied
         code = unique_code(conn)
         cur = conn.execute(
             "INSERT INTO tests (title, subject, class_name, duration_minutes, code, is_active, school_id, created_by, created_at) "
@@ -679,9 +737,13 @@ def update_test_meta(test_id):
             return jsonify({"ok": False, "error": "Sinf noto'g'ri"}), 400
         if duration < 1:
             return jsonify({"ok": False, "error": "Vaqtni to'g'ri belgilang"}), 400
-        # O'qituvchi begona sinfga o'zgartira olmaydi
+        # O'qituvchi begona sinf/fanга o'zgartira olmaydi
         if class_name != r["class_name"]:
             denied = teacher_class_denied(conn, class_name)
+            if denied:
+                return denied
+        if subject != r["subject"]:
+            denied = teacher_subject_denied(conn, subject)
             if denied:
                 return denied
         conn.execute("UPDATE tests SET title = ?, subject = ?, class_name = ?, duration_minutes = ? WHERE id = ?",
@@ -1437,7 +1499,7 @@ def create_lesson():
         return jsonify({"ok": False, "error": "Avval maktabga kiring"}), 400
     conn = get_conn()
     try:
-        denied = teacher_class_denied(conn, class_name)
+        denied = teacher_class_denied(conn, class_name) or teacher_subject_denied(conn, subject)
         if denied:
             return denied
         cur = conn.execute(
@@ -1500,10 +1562,14 @@ def update_lesson(lesson_id):
             return jsonify({"ok": False, "error": "Fan noto'g'ri"}), 400
         if class_name not in CLASSES:
             return jsonify({"ok": False, "error": "Sinf noto'g'ri"}), 400
-        # Yangi sinf uchun ham ruxsat (o'qituvchi begona sinfga o'tkaza olmaydi)
+        # Yangi sinf/fan uchun ham ruxsat (o'qituvchi begona sinf/fanга o'tkaza olmaydi)
         denied2 = teacher_class_denied(conn, class_name)
         if denied2:
             return denied2
+        if subject != l["subject"]:
+            denied3 = teacher_subject_denied(conn, subject)
+            if denied3:
+                return denied3
         try:
             coins = int(request.form.get("coins_reward") or l["coins_reward"] or 0)
         except ValueError:
@@ -1584,20 +1650,26 @@ def lesson_media(lesson_id):
 
 @app.route("/api/learning/enter", methods=["POST"])
 def learning_enter():
-    """Bilim olishga o'quvchi LOGIN/PAROL bilan kiradi (zavuch/boshqaruv beradi)."""
+    """Bilim olishga o'quvchi MAKTAB + LOGIN/PAROL bilan kiradi (zavuch/boshqaruv beradi)."""
     data = request.get_json(force=True, silent=True) or {}
     username = norm(data.get("username"))
     password = data.get("password") or ""
+    try:
+        school_id = int(data.get("school_id"))
+    except (TypeError, ValueError):
+        school_id = None
     if not username or not password:
         return jsonify({"ok": False, "error": "Login va parolni kiriting"}), 400
+    if not school_id:
+        return jsonify({"ok": False, "error": "Maktabingizni tanlang"}), 400
     err = check_work_hours()
     if err:
         return err
     conn = get_conn()
     try:
-        student = conn.execute("SELECT * FROM students WHERE learn_username = ?", (username,)).fetchone()
+        student = conn.execute("SELECT * FROM students WHERE learn_username = ? AND school_id = ?", (username, school_id)).fetchone()
         if not student or not student["learn_password_hash"] or not check_password_hash(student["learn_password_hash"], password):
-            return jsonify({"ok": False, "error": "Login yoki parol noto'g'ri"}), 401
+            return jsonify({"ok": False, "error": "Login yoki parol noto'g'ri (yoki maktab noto'g'ri tanlangan)"}), 401
         if student["blocked"]:
             return jsonify({"ok": False, "error": "Siz bloklangansiz. Ustozingiz/zavuch bilan bog'laning."}), 403
         school_id = student["school_id"]
@@ -1930,9 +2002,9 @@ def set_learning_login(student_id):
             return jsonify({"ok": False, "error": "O'quvchi topilmadi"}), 404
         if sid is not None and s["school_id"] != sid:
             return jsonify({"ok": False, "error": "Bu boshqa maktab o'quvchisi"}), 403
-        dup = conn.execute("SELECT 1 FROM students WHERE learn_username = ? AND id != ?", (username, student_id)).fetchone()
+        dup = conn.execute("SELECT 1 FROM students WHERE learn_username = ? AND school_id IS ? AND id != ?", (username, s["school_id"], student_id)).fetchone()
         if dup:
-            return jsonify({"ok": False, "error": "Bu login boshqa o'quvchiga berilgan"}), 400
+            return jsonify({"ok": False, "error": "Bu login shu maktabда boshqa o'quvchiga berilgan"}), 400
         conn.execute("UPDATE students SET learn_username = ?, learn_password_hash = ?, learn_password_plain = ? WHERE id = ?",
                      (username, generate_password_hash(password), password, student_id))
         conn.commit()
@@ -2098,7 +2170,7 @@ def list_teachers():
     try:
         if sid is None:
             return jsonify({"ok": True, "teachers": [], "my_role": session.get("role"), "need_school": True})
-        rows = conn.execute("SELECT id, username, password_plain, role, suspended, assigned_classes, created_at FROM teachers WHERE school_id = ? ORDER BY role, id", (sid,)).fetchall()
+        rows = conn.execute("SELECT id, username, password_plain, role, suspended, assigned_classes, assigned_subjects, created_at FROM teachers WHERE school_id = ? ORDER BY role, id", (sid,)).fetchall()
         total_students = conn.execute("SELECT COUNT(*) AS c FROM students WHERE school_id = ?", (sid,)).fetchone()["c"]
         out = []
         for r in rows:
@@ -2113,6 +2185,7 @@ def list_teachers():
                         "role_label": ROLE_LABELS.get(r["role"] or "teacher", "O'qituvchi"),
                         "suspended": bool(r["suspended"]),
                         "assigned_classes": r["assigned_classes"] or "",
+                        "assigned_subjects": r["assigned_subjects"] or "",
                         "password": r["password_plain"],
                         "classes_count": len(ac), "students_count": stu_count, "tests_count": test_count,
                         "is_me": r["id"] == session.get("teacher_id")})
@@ -2206,6 +2279,29 @@ def set_teacher_classes(teacher_id):
         conn.execute("UPDATE teachers SET assigned_classes = ? WHERE id = ?", (ac, teacher_id))
         conn.commit()
         return jsonify({"ok": True, "assigned_classes": ac})
+    finally:
+        conn.close()
+
+
+@app.route("/api/teachers/<int:teacher_id>/subjects", methods=["POST"])
+@role_required("owner", "zavuch")
+def set_teacher_subjects(teacher_id):
+    """O'qituvchiga biriktirilgan fanlarni belgilash (bo'sh = hammasi)."""
+    data = request.get_json(force=True, silent=True) or {}
+    subjects = data.get("subjects") or []
+    sid = scope_school_id()
+    conn = get_conn()
+    try:
+        t = conn.execute("SELECT * FROM teachers WHERE id = ?", (teacher_id,)).fetchone()
+        if not t:
+            return jsonify({"ok": False, "error": "Topilmadi"}), 404
+        if sid is not None and t["school_id"] != sid:
+            return jsonify({"ok": False, "error": "Bu boshqa maktab hisobi"}), 403
+        valid = [s for s in subjects if s in SUBJECTS]
+        asub = ",".join(valid)
+        conn.execute("UPDATE teachers SET assigned_subjects = ? WHERE id = ?", (asub, teacher_id))
+        conn.commit()
+        return jsonify({"ok": True, "assigned_subjects": asub})
     finally:
         conn.close()
 

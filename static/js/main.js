@@ -9,6 +9,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await UI.loadMeta();
 
+  // Bilim olish uchun maktablar ro'yxati (o'quvchi maktabini tanlab kiradi)
+  const schoolRes = await API.get("/api/schools/public");
+  const learnSchoolSel = document.querySelector('#student-login [name="learn_school_id"]');
+  if (schoolRes.ok && learnSchoolSel) {
+    schoolRes.schools.forEach((s) => {
+      const o = document.createElement("option"); o.value = s.id; o.textContent = s.name; learnSchoolSel.appendChild(o);
+    });
+  }
+
   let studentMode = "test"; // test | learn
 
   const clearErrors = () =>
@@ -57,13 +66,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     const errEl = document.querySelector('.form-error[data-for="student"]');
     errEl.textContent = "";
 
-    // BILIM OLISH: login/parol bilan
+    // BILIM OLISH: maktab + login/parol bilan
     if (studentMode === "learn") {
+      const schoolId = f.elements.learn_school_id.value;
       const lu = f.elements.learn_username.value.trim();
       const lp = f.elements.learn_password.value;
+      if (!schoolId) { errEl.textContent = "Maktabingizni tanlang"; return; }
       if (!lu || !lp) { errEl.textContent = "Login va parolni kiriting"; return; }
       btn.disabled = true; btn.textContent = "Kirilmoqda...";
-      const res = await API.post("/api/learning/enter", { username: lu, password: lp });
+      const res = await API.post("/api/learning/enter", { school_id: schoolId, username: lu, password: lp });
       btn.disabled = false; btn.textContent = "Bilim olishga kirish →";
       if (!res.ok) { errEl.textContent = res.error || "Login yoki parol noto'g'ri"; return; }
       f.reset();

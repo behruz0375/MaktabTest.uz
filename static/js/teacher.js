@@ -158,11 +158,25 @@ const Teacher = {
       this.viewSchool = { id: t.view_school_id, name: t.view_school_name };
     }
     this.applyRoleUI();
+    this._applySubjectScope();
     const isOwner = t.role === "owner";
     if (isOwner && !this.viewSchool) this.showSection("schools", false);
     else this.showSection("stats", false);
     UI.showView("view-teacher");
     this.startNotifPoll();
+  },
+
+  /* O'qituvchiga biriktirilgan fanlargina test/dars formalarida ko'rinsin */
+  _applySubjectScope() {
+    const t = State.teacher || {};
+    const asub = (t.assigned_subjects || "").split(",").map((x) => x.trim()).filter(Boolean);
+    if (!(t.role === "teacher" && asub.length)) return;   // cheklov yo'q — hammasi ochiq
+    ["ct-subject", "ls-subject", "imp-subject"].forEach((id) => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      sel.innerHTML = '<option value="" disabled selected>Fanni tanlang</option>';
+      asub.forEach((s) => { const o = document.createElement("option"); o.value = s; o.textContent = s; sel.appendChild(o); });
+    });
   },
 
   startNotifPoll() {
@@ -1946,11 +1960,13 @@ const Teacher = {
       const myRole = res.my_role;
       if (t.is_me) actions = '<span class="muted">(joriy hisob)</span>';
       else if (t.role === "teacher") {
-        const acLabel = t.assigned_classes ? `📌 ${t.assigned_classes.split(",").length} sinf` : "📌 Hammasi";
+        const acLabel = t.assigned_classes ? `📌 ${t.assigned_classes.split(",").length} sinf` : "📌 Hamma sinf";
+        const asLabel = t.assigned_subjects ? `📚 ${t.assigned_subjects.split(",").length} fan` : "📚 Hamma fan";
         actions = `
           <button class="btn btn-secondary btn-sm" data-creds="${t.id}">🔑 Login/parol</button>
           <button class="btn btn-ghost btn-sm" data-susp="${t.id}">${t.suspended ? "▶️ Faollashtirish" : "⏸️ To'xtatish"}</button>
           <button class="btn btn-ghost btn-sm" data-classes="${t.id}" title="Sinflarni biriktirish">${acLabel}</button>
+          <button class="btn btn-ghost btn-sm" data-subjects="${t.id}" title="Fanlarni biriktirish">${asLabel}</button>
           <button class="btn btn-danger btn-sm" data-del="${t.id}">🗑️ O'chirish</button>`;
       } else if ((t.role === "zavuch" || t.role === "director") && myRole === "owner") {
         // Boshqaruv zavuchning login/parolini yangilaydi va zavuchni o'chira oladi
@@ -1960,7 +1976,7 @@ const Teacher = {
       }
       const credLine = `<div class="pc-creds"><span class="cred-pill">Login: <b>${UI.esc(t.username)}</b></span>${t.password ? `<span class="cred-pill">Parol: <b>${UI.esc(t.password)}</b></span>` : '<span class="muted">parol ko\'rinmaydi (eski hisob)</span>'}</div>`;
       const countLine = (t.role === "teacher")
-        ? `<div class="sub" style="margin-top:4px">👥 ${t.students_count} o'quvchi • 📌 ${t.classes_count ? t.classes_count + " sinf" : "barcha sinflar"} • 📋 ${t.tests_count} test</div>`
+        ? `<div class="sub" style="margin-top:4px">👥 ${t.students_count} o'quvchi • 📌 ${t.classes_count ? t.classes_count + " sinf" : "barcha sinflar"} • 📚 ${t.assigned_subjects ? UI.esc(t.assigned_subjects) : "barcha fanlar"} • 📋 ${t.tests_count} test</div>`
         : "";
       row.innerHTML = `
         <div class="pc-info"><b>${UI.esc(t.username)}</b> ${roleTag} ${suspTag} ${t.is_me ? '<span class="chip on">Siz</span>' : ""}${credLine}${countLine}</div>
@@ -1969,6 +1985,7 @@ const Teacher = {
       const creds = row.querySelector("[data-creds]"); if (creds) creds.onclick = () => this.openTeacherCredentials(t);
       const susp = row.querySelector("[data-susp]"); if (susp) susp.onclick = () => this.suspendTeacher(t);
       const cls = row.querySelector("[data-classes]"); if (cls) cls.onclick = () => this.setTeacherClasses(t);
+      const subj = row.querySelector("[data-subjects]"); if (subj) subj.onclick = () => this.setTeacherSubjects(t);
       box.appendChild(row);
     });
   },
@@ -1999,6 +2016,36 @@ const Teacher = {
       if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
       UI.closeModal();
       UI.toast(selected.length ? `${selected.length} ta sinf biriktirildi ✔` : "Barcha sinflar ochiq ✔", "ok");
+      this.loadTeachers();
+    };
+  },
+
+  setTeacherSubjects(t) {
+    const current = t.assigned_subjects ? t.assigned_subjects.split(",").filter(Boolean) : [];
+    const allSub = State.meta.subjects || [];
+    const checks = allSub.map((s) =>
+      `<label class="chk-label" style="display:inline-flex;gap:6px;padding:4px 8px;margin:2px;background:var(--bg-2);border-radius:6px">
+        <input type="checkbox" class="asub-chk" value="${UI.esc(s)}" ${current.includes(s) ? "checked" : ""}> ${UI.esc(s)}
+      </label>`
+    ).join("");
+    UI.modal(`
+      <span class="modal-icon">📚</span>
+      <h2 style="text-align:center">${UI.esc(t.username)} — fanlar</h2>
+      <p class="muted" style="text-align:center">Bo'sh qoldirsangiz, o'qituvchi barcha fanlar bilan ishlaydi. Masalan faqat Matematikани belgilasangiz — u faqat shu fanга test/dars qo'sha oladi.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:2px;max-height:300px;overflow-y:auto;margin:10px 0">${checks}</div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="asub-all">Hammasini belgilash</button>
+        <button class="btn btn-ghost" id="asub-none">Tozalash</button>
+        <button class="btn btn-success" id="asub-save">💾 Saqlash</button>
+      </div>`, { large: true });
+    document.getElementById("asub-all").onclick = () => document.querySelectorAll(".asub-chk").forEach((c) => (c.checked = true));
+    document.getElementById("asub-none").onclick = () => document.querySelectorAll(".asub-chk").forEach((c) => (c.checked = false));
+    document.getElementById("asub-save").onclick = async () => {
+      const selected = Array.from(document.querySelectorAll(".asub-chk:checked")).map((c) => c.value);
+      const res = await API.post(`/api/teachers/${t.id}/subjects`, { subjects: selected });
+      if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+      UI.closeModal();
+      UI.toast(selected.length ? `${selected.length} ta fan biriktirildi ✔` : "Barcha fanlar ochiq ✔", "ok");
       this.loadTeachers();
     };
   },
@@ -2059,16 +2106,35 @@ const Teacher = {
     if (!res.ok) { box.innerHTML = '<p class="muted">Xatolik</p>'; return; }
     const p = res.profile;
     const c = p.counts || {};
+    const u = p.usage || {};
+    const m = p.media || {};
     const initials = (p.username || "?").slice(0, 2).toUpperCase();
     const acList = p.assigned_classes ? p.assigned_classes.split(",").filter(Boolean) : [];
     const acHtml = acList.length
       ? acList.map((x) => `<span class="chip on">${UI.esc(x)}</span>`).join(" ")
       : '<span class="muted">Barcha sinflar</span>';
+    const asList = p.assigned_subjects ? p.assigned_subjects.split(",").filter(Boolean) : [];
+    const asHtml = asList.length
+      ? asList.map((x) => `<span class="chip on">${UI.esc(x)}</span>`).join(" ")
+      : '<span class="muted">Barcha fanlar</span>';
     const tiles = [];
     if (p.role === "owner") tiles.push(`<div class="stat-tile"><div class="num">🏫 ${c.schools != null ? c.schools : "—"}</div><div class="lbl">Maktablar</div></div>`);
     tiles.push(`<div class="stat-tile"><div class="num">👥 ${c.students || 0}</div><div class="lbl">O'quvchilar</div></div>`);
+    if (c.teachers != null) tiles.push(`<div class="stat-tile"><div class="num">🧑‍🏫 ${c.teachers}</div><div class="lbl">O'qituvchilar</div></div>`);
     tiles.push(`<div class="stat-tile"><div class="num">📋 ${c.tests || 0}</div><div class="lbl">${p.role === "teacher" ? "Mening testlarim" : "Testlar"}</div></div>`);
     tiles.push(`<div class="stat-tile"><div class="num">📚 ${c.lessons || 0}</div><div class="lbl">Darslar</div></div>`);
+    tiles.push(`<div class="stat-tile"><div class="num">✍️ ${c.submissions || 0}</div><div class="lbl">Topshirilgan test</div></div>`);
+    // Saytdan foydalanish vaqti (bilim olish)
+    const usageBlock = (p.role !== "teacher")
+      ? `<h3 style="margin:18px 0 8px">⏱ Saytdan foydalanish (bilim olish vaqti)</h3>
+         <div class="stat-tiles">
+           <div class="stat-tile"><div class="num">📅 ${this.fmtDurLong(u.today)}</div><div class="lbl">Bugun</div></div>
+           <div class="stat-tile"><div class="num">🗓 ${this.fmtDurLong(u.week)}</div><div class="lbl">7 kun</div></div>
+           <div class="stat-tile"><div class="num">📆 ${this.fmtDurLong(u.month)}</div><div class="lbl">Shu oy</div></div>
+           <div class="stat-tile"><div class="num">Σ ${this.fmtDurLong(u.total)}</div><div class="lbl">Jami</div></div>
+         </div>
+         <p class="muted" style="margin-top:8px">🎬 Video: ${this.fmtDurLong(m.video)} • 🎧 Audio: ${this.fmtDurLong(m.audio)} • 📖 Matn: ${this.fmtDurLong(m.text)}</p>`
+      : "";
     box.innerHTML = `
       <div class="profile-card">
         <div class="profile-head">
@@ -2079,7 +2145,9 @@ const Teacher = {
           </div>
         </div>
         <div class="stat-tiles" style="margin-top:16px">${tiles.join("")}</div>
+        ${usageBlock}
         <div class="field-row" style="margin-top:16px"><label>📌 Biriktirilgan sinflar</label><div>${acHtml}</div></div>
+        ${p.role === "teacher" ? `<div class="field-row"><label>📚 Biriktirilgan fanlar</label><div>${asHtml}</div></div>` : ""}
         <div class="field-row"><label>🗓 Ro'yxatdan o'tgan sana</label><div>${UI.esc(p.created_at || "—")}</div></div>
         <div style="margin-top:14px"><button class="btn btn-secondary" id="prof-to-settings">⚙️ Login/parolni o'zgartirish</button></div>
       </div>`;
