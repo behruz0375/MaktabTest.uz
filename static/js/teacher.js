@@ -1855,9 +1855,8 @@ const Teacher = {
       rows += `<tr><td>-</td><td>${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</td><td colspan="6" style="color:#999">Topshirmagan</td></tr>`;
     });
     const now = new Date().toLocaleDateString("uz-UZ");
-    const w = window.open("", "_blank");
-    if (!w) return UI.toast("Popup bloklangan — ruxsat bering", "err");
-    w.document.write(`<html><head><title>Natijalar ${UI.esc(cls)}</title><meta charset="utf-8">
+    // Popup emas — yashirin iframe orqali chop etamiz (brauzer bloklamaydi)
+    const html = `<html><head><title>Natijalar ${UI.esc(cls)}</title><meta charset="utf-8">
       <style>body{font-family:Arial,sans-serif;padding:24px;font-size:14px}h1{color:#6a41ff;margin-bottom:4px}
       .meta{color:#888;margin-bottom:14px;font-size:12px}
       table{border-collapse:collapse;width:100%;margin-top:12px}
@@ -1871,8 +1870,23 @@ const Teacher = {
       <table><thead><tr><th>#</th><th>O'quvchi</th><th>Baho</th><th>Foiz</th><th>Vaqt</th><th>Testlar</th><th>Holat</th></tr></thead>
       <tbody>${rows}</tbody></table>
       <div class="foot">MaktabTest.uz — ${now}</div>
-      <scr` + `ipt>window.onload=function(){window.print()}</scr` + `ipt></body></html>`);
-    w.document.close();
+      </body></html>`;
+    const old = document.getElementById("print-frame");
+    if (old) old.remove();
+    const frame = document.createElement("iframe");
+    frame.id = "print-frame";
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+    frame.onload = () => {
+      const w = frame.contentWindow;
+      const done = () => { if (frame.parentNode) frame.remove(); };
+      w.onafterprint = done;
+      setTimeout(done, 60000);
+      w.focus();
+      w.print();
+    };
+    frame.srcdoc = html;
+    document.body.appendChild(frame);
+    UI.toast("Chop etish oynasi ochilmoqda — printer o'rniga \"PDF sifatida saqlash\"ni tanlang", "ok", 5000);
   },
 
   /* =============== OTA-ONA LOGINI (o'quvchilar ro'yxatidan) =============== */
