@@ -39,6 +39,8 @@ const Teacher = {
     document.getElementById("lrn-class").onchange = (e) => this.loadLearning(e.target.value);
     document.getElementById("lrn-subject").onchange = () => { if (this.currentLrnClass) this.loadLearning(this.currentLrnClass); };
     document.getElementById("lrn-refresh").onclick = async () => { if (this.currentLrnClass) { await this.loadLearning(this.currentLrnClass); UI.toast("Mutolaa natijalari yangilandi ✓", "ok", 1500); } };
+    document.getElementById("lrn-exp-excel").onclick = () => this.exportLearningExcel();
+    document.getElementById("lrn-exp-pdf").onclick = () => this.exportLearningPDF();
     // Mutolaa bo'limidan yangi o'quvchi qo'shish (zavuch/boshqaruv)
     const lrnAdd = document.getElementById("lrn-add");
     if (lrnAdd) lrnAdd.onclick = () => this.addStudentFromLearning();
@@ -1112,19 +1114,23 @@ const Teacher = {
           ? `<span class="status-pill danger">⚠️ ${UI.esc(sub.violation_reason || "Xavf")}</span>`
           : `<span class="status-pill done">✔ Topshirildi</span>`;
         const retakeTag = sub.retaken ? '<span class="status-pill" style="background:#f8a928;color:#111;display:block;margin-bottom:4px">🔁 Qayta topshirdi</span>' : "";
+        const baho = sub.baho ? this.bahoBadgeHtml(sub.baho, "Baho").replace("margin-left:6px", "margin-left:0") : "—";
         return `<tr>
           <td>${UI.esc(sub.submitted_at || "-")}</td>
           <td><b>${UI.esc(sub.test_title)}</b><br><span class="muted">${UI.esc(sub.subject)}</span></td>
           <td><b class="code-cell">${UI.esc(sub.code || "-")}</b></td>
+          <td>${sub.total} ta</td>
           <td><b>${sub.score}/${sub.total}</b></td>
           <td>${sub.percentage}%</td>
+          <td>${baho}</td>
+          <td>${sub.duration_minutes != null ? sub.duration_minutes + " daq" : "-"}</td>
           <td>${this.fmtDur(sub.duration_seconds)}</td>
           <td>${retakeTag}${status}</td>
           <td><button class="btn btn-secondary btn-sm" data-retake="${sub.test_id}">🔁 Qayta</button></td>
         </tr>`;
       }).join("");
       body = `<div style="overflow-x:auto"><table class="sub-table">
-        <thead><tr><th>Sana/vaqt</th><th>Test</th><th>Kod</th><th>Ball</th><th>Foiz</th><th>Davomiylik</th><th>Holat</th><th>Amal</th></tr></thead>
+        <thead><tr><th>Sana/vaqt</th><th>Test</th><th>Kod</th><th>Savollar</th><th>Ball</th><th>Foiz</th><th>Baho</th><th>Belgilangan vaqt</th><th>Sarflangan vaqt</th><th>Holat</th><th>Amal</th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
     UI.modal(`
@@ -1656,7 +1662,8 @@ const Teacher = {
     title.innerHTML = isAll
       ? `🎓 Barcha sinflar — mutolaa reytingi${subj ? " • " + UI.esc(subj) : ""}`
       : `🎓 ${UI.esc(cls)} sinf — mutolaa reytingi${subj ? " • " + UI.esc(subj) : ""}`;
-    const rbox = document.getElementById("lrn-refresh-box"); if (rbox) rbox.style.display = "block";
+    this._lrnData = res.students || [];
+    const rbox = document.getElementById("lrn-refresh-box"); if (rbox) rbox.style.display = "flex";
     // Yangi o'quvchi qo'shish oynasi — faqat zavuch/boshqaruv va aniq sinf tanlanganda
     const addBox = document.getElementById("lrn-add-box");
     const isAdmin = State.teacher && State.teacher.is_admin;
@@ -1808,6 +1815,41 @@ const Teacher = {
   },
 
   /* =============== EKSPORT =============== */
+  /* CSV faylni Excel to'g'ri ustunlarga ajratishi uchun: BOM + "sep=;" + nuqta-vergul */
+  _downloadCsv(filename, headers, rows) {
+    const cell = (v) => {
+      const s = String(v == null ? "" : v);
+      return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const body = [headers, ...rows].map((r) => r.map(cell).join(";")).join("\r\n");
+    const blob = new Blob(["﻿" + "sep=;\r\n" + body], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  },
+
+  /* Popup emas — yashirin iframe orqali chop etamiz (brauzer bloklamaydi) */
+  _printHtml(html) {
+    const old = document.getElementById("print-frame");
+    if (old) old.remove();
+    const frame = document.createElement("iframe");
+    frame.id = "print-frame";
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+    frame.onload = () => {
+      const w = frame.contentWindow;
+      const done = () => { if (frame.parentNode) frame.remove(); };
+      w.onafterprint = done;
+      setTimeout(done, 60000);
+      w.focus();
+      w.print();
+    };
+    frame.srcdoc = html;
+    document.body.appendChild(frame);
+    UI.toast("Chop etish oynasi ochilmoqda — printer o'rniga \"PDF sifatida saqlash\"ni tanlang", "ok", 5000);
+  },
+
   exportExcel() {
     const cls = this.currentResClass;
     if (!cls) return UI.toast("Avval sinfni tanlang", "err");
@@ -1831,62 +1873,110 @@ const Teacher = {
     const submitted = prep.filter((s) => s.submitted).map((s) => ({ s, st: this.bestStats(s) }));
     submitted.sort((a, b) => (b.st.pct - a.st.pct) || (a.st.dur - b.st.dur));
     const pending = prep.filter((s) => !s.submitted);
-    // Kod: bitta o'quvchi uchun birinchi test kodi (yoki eng yaxshi)
-    const getCode = (s) => {
-      if (!s.submissions.length) return "-";
-      return s.submissions[0].test_title || "-";
-    };
+    const bahoColorOf = (b) => (b >= 5 ? "color:#23c483" : b >= 4 ? "color:#3ca6ff" : b >= 3 ? "color:#f8a928" : "color:#e94b4b");
+    // Har bir topshirilgan test alohida qator: fan, baho, savollar soni, belgilangan/sarflangan vaqt, sana
     let rows = "";
-    submitted.forEach(({ s, st }, i) => {
-      const baho = this.bahoOf(st.pct);
-      const bahoCls = baho >= 5 ? "color:#23c483" : baho >= 4 ? "color:#3ca6ff" : baho >= 3 ? "color:#f8a928" : "color:#e94b4b";
-      const latestCode = s.submissions[0] ? (s.submissions[0].test_id ? "#" + s.submissions[0].test_id : "-") : "-";
-      rows += `<tr>
-        <td>${i + 1}</td>
-        <td>${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</td>
-        <td><b style="${bahoCls}">${baho}</b></td>
-        <td>${st.pct}%</td>
-        <td>${this.fmtDur(st.dur)}</td>
-        <td>${st.count}</td>
-        <td>${s.has_violation ? "⚠️ Xavf" : "✔"}</td>
-      </tr>`;
+    let n = 0;
+    submitted.forEach(({ s, st }) => {
+      s.submissions.forEach((sub, k) => {
+        n++;
+        const baho = sub.status === "terminated" ? null : this.bahoOf(sub.percentage);
+        rows += `<tr>
+          <td>${n}</td>
+          <td>${k === 0 ? `<b>${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</b>` : '<span style="color:#bbb">″</span>'}</td>
+          <td>${UI.esc(s.class_name || cls)}</td>
+          <td>${UI.esc(sub.test_title)}</td>
+          <td>${UI.esc(sub.subject)}</td>
+          <td>${sub.total} ta</td>
+          <td>${sub.score}/${sub.total}</td>
+          <td>${sub.percentage}%</td>
+          <td><b style="${baho ? bahoColorOf(baho) : "color:#999"}">${baho || "—"}</b></td>
+          <td>${sub.duration_minutes != null ? sub.duration_minutes + " daq" : "-"}</td>
+          <td>${this.fmtDur(sub.duration_seconds)}</td>
+          <td>${UI.esc(sub.submitted_at || "-")}</td>
+          <td>${sub.status === "terminated" ? "⚠️ Xavf" : "✔ Topshirdi"}</td>
+        </tr>`;
+      });
     });
     pending.forEach((s) => {
-      rows += `<tr><td>-</td><td>${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</td><td colspan="6" style="color:#999">Topshirmagan</td></tr>`;
+      n++;
+      rows += `<tr><td>${n}</td><td><b>${UI.esc(s.last_name)} ${UI.esc(s.first_name)}</b></td><td>${UI.esc(s.class_name || cls)}</td>
+        <td colspan="10" style="color:#999">Hali test topshirmagan</td></tr>`;
     });
     const now = new Date().toLocaleDateString("uz-UZ");
     // Popup emas — yashirin iframe orqali chop etamiz (brauzer bloklamaydi)
     const html = `<html><head><title>Natijalar ${UI.esc(cls)}</title><meta charset="utf-8">
-      <style>body{font-family:Arial,sans-serif;padding:24px;font-size:14px}h1{color:#6a41ff;margin-bottom:4px}
-      .meta{color:#888;margin-bottom:14px;font-size:12px}
-      table{border-collapse:collapse;width:100%;margin-top:12px}
-      th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#efe9ff;font-weight:700}
+      <style>@page{size:A4 landscape;margin:10mm}
+      body{font-family:Arial,sans-serif;padding:18px;font-size:11px}h1{color:#6a41ff;margin-bottom:4px;font-size:18px}
+      .meta{color:#888;margin-bottom:10px;font-size:11px}
+      table{border-collapse:collapse;width:100%;margin-top:10px}
+      th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}th{background:#efe9ff;font-weight:700}
       tr:nth-child(even){background:#f7f7ff}
-      .foot{margin-top:18px;color:#aaa;font-size:11px;text-align:right}
-      @media print{body{padding:12px}}</style></head>
+      .foot{margin-top:14px;color:#aaa;font-size:10px;text-align:right}
+      @media print{body{padding:0}}</style></head>
       <body>
-      <h1>📊 ${UI.esc(cls)} sinf — natijalar${subj ? " • " + UI.esc(subj) : ""}</h1>
-      <div class="meta">Sana: ${now} • MaktabTest.uz • Topshirdi: ${submitted.length} ta, topshirmadi: ${pending.length} ta</div>
-      <table><thead><tr><th>#</th><th>O'quvchi</th><th>Baho</th><th>Foiz</th><th>Vaqt</th><th>Testlar</th><th>Holat</th></tr></thead>
+      <h1>📊 ${UI.esc(cls === "__all__" ? "Barcha sinflar" : cls + " sinf")} — natijalar${subj ? " • " + UI.esc(subj) : ""}</h1>
+      <div class="meta">Hisobot sanasi: ${now} • MaktabTest.uz • Topshirdi: ${submitted.length} ta o'quvchi, topshirmadi: ${pending.length} ta</div>
+      <table><thead><tr><th>#</th><th>O'quvchi</th><th>Sinf</th><th>Test</th><th>Fan</th><th>Savollar</th><th>Ball</th><th>Foiz</th><th>Baho</th><th>Belgilangan vaqt</th><th>Sarflangan vaqt</th><th>Topshirgan sana</th><th>Holat</th></tr></thead>
       <tbody>${rows}</tbody></table>
       <div class="foot">MaktabTest.uz — ${now}</div>
       </body></html>`;
-    const old = document.getElementById("print-frame");
-    if (old) old.remove();
-    const frame = document.createElement("iframe");
-    frame.id = "print-frame";
-    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
-    frame.onload = () => {
-      const w = frame.contentWindow;
-      const done = () => { if (frame.parentNode) frame.remove(); };
-      w.onafterprint = done;
-      setTimeout(done, 60000);
-      w.focus();
-      w.print();
-    };
-    frame.srcdoc = html;
-    document.body.appendChild(frame);
-    UI.toast("Chop etish oynasi ochilmoqda — printer o'rniga \"PDF sifatida saqlash\"ni tanlang", "ok", 5000);
+    this._printHtml(html);
+  },
+
+  /* =============== MUTOLAA NATIJALARI EKSPORTI =============== */
+  _lrnHeaders: ["#", "O'quvchi", "Sinf", "Video", "Audio", "Matn", "Jami darslar", "Tugatgan",
+                "Faollik", "Jami vaqt", "Shu oy vaqt", "Oylik foiz", "Baho", "Coin"],
+  _lrnRows() {
+    return (this._lrnData || []).map((s, i) => [
+      i + 1,
+      s.last_name + " " + s.first_name,
+      s.class_name || "-",
+      s.videos, s.audios, s.texts,
+      s.videos + s.audios + s.texts,
+      s.total_lessons ? `${s.done_lessons}/${s.total_lessons}` : "-",
+      s.faollik_pct != null ? s.faollik_pct + "%" : "-",
+      this.fmtDurLong(s.total_duration_seconds),
+      this.fmtDurLong(s.month_duration_seconds),
+      s.monthly_pct != null ? s.monthly_pct + "%" : "-",
+      s.baho || "-",
+      s.coins,
+    ]);
+  },
+
+  exportLearningExcel() {
+    const cls = this.currentLrnClass;
+    if (!cls || !this._lrnData) return UI.toast("Avval sinfni tanlang", "err");
+    const subj = document.getElementById("lrn-subject") ? document.getElementById("lrn-subject").value : "";
+    const name = "mutolaa_" + (cls === "__all__" ? "hamma" : cls) + (subj ? "_" + subj : "") + ".csv";
+    this._downloadCsv(name, this._lrnHeaders, this._lrnRows());
+    UI.toast("Excel (CSV) fayl yuklab olindi", "ok");
+  },
+
+  exportLearningPDF() {
+    const cls = this.currentLrnClass;
+    if (!cls || !this._lrnData) return UI.toast("Avval sinfni tanlang", "err");
+    const subj = document.getElementById("lrn-subject") ? document.getElementById("lrn-subject").value : "";
+    const now = new Date().toLocaleDateString("uz-UZ");
+    const rows = this._lrnRows().map((r) =>
+      `<tr>${r.map((v, i) => `<td>${i === 1 ? "<b>" + UI.esc(String(v)) + "</b>" : UI.esc(String(v))}</td>`).join("")}</tr>`).join("");
+    const head = this._lrnHeaders.map((h) => `<th>${UI.esc(h)}</th>`).join("");
+    const html = `<html><head><title>Mutolaa natijalari ${UI.esc(cls)}</title><meta charset="utf-8">
+      <style>@page{size:A4 landscape;margin:10mm}
+      body{font-family:Arial,sans-serif;padding:18px;font-size:11px}h1{color:#6a41ff;margin-bottom:4px;font-size:18px}
+      .meta{color:#888;margin-bottom:10px;font-size:11px}
+      table{border-collapse:collapse;width:100%;margin-top:10px}
+      th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}th{background:#efe9ff;font-weight:700}
+      tr:nth-child(even){background:#f7f7ff}
+      .foot{margin-top:14px;color:#aaa;font-size:10px;text-align:right}
+      @media print{body{padding:0}}</style></head>
+      <body>
+      <h1>🎓 ${UI.esc(cls === "__all__" ? "Barcha sinflar" : cls + " sinf")} — mutolaa natijalari${subj ? " • " + UI.esc(subj) : ""}</h1>
+      <div class="meta">Hisobot sanasi: ${now} • MaktabTest.uz • Jami: ${(this._lrnData || []).length} ta o'quvchi</div>
+      <table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
+      <div class="foot">MaktabTest.uz — ${now}</div>
+      </body></html>`;
+    this._printHtml(html);
   },
 
   /* =============== OTA-ONA LOGINI (o'quvchilar ro'yxatidan) =============== */

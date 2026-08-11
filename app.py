@@ -152,6 +152,13 @@ def baho_from_pct(pct):
     return 2
 
 
+def fmt_dur_uz(sec):
+    """Soniyani o'qishga qulay ko'rinishga aylantiradi: '3 daq 20 s'."""
+    sec = int(sec or 0)
+    m, s = divmod(sec, 60)
+    return f"{m} daq {s} s" if m else f"{s} s"
+
+
 def norm(s):
     return (s or "").strip()
 
@@ -946,13 +953,15 @@ def delete_student(student_id):
 
 
 def _submission_summary(conn, sub):
-    t = conn.execute("SELECT title, subject, class_name, code FROM tests WHERE id = ?", (sub["test_id"],)).fetchone()
+    t = conn.execute("SELECT title, subject, class_name, code, duration_minutes FROM tests WHERE id = ?", (sub["test_id"],)).fetchone()
     return {
         "id": sub["id"],
         "test_id": sub["test_id"],
         "test_title": t["title"] if t else "(o'chirilgan test)",
         "subject": t["subject"] if t else "-",
         "code": t["code"] if t else "-",
+        "duration_minutes": t["duration_minutes"] if t else None,
+        "baho": baho_from_pct(sub["percentage"]) if sub["status"] == "completed" else None,
         "status": sub["status"],
         "score": sub["score"],
         "total": sub["total"],
@@ -2175,33 +2184,54 @@ def parent_activity():
 @teacher_required
 def export_results_csv():
     class_name = norm(request.args.get("class_name"))
-    if class_name not in CLASSES:
+    all_classes = (class_name == "__all__")
+    if not all_classes and class_name not in CLASSES:
         abort(400)
     conn = get_conn()
     try:
         sc_, sp_ = school_clause()
-        students = conn.execute("SELECT * FROM students WHERE class_name = ?" + sc_ + " ORDER BY last_name, first_name", [class_name] + sp_).fetchall()
+        allowed = teacher_allowed_classes(conn)
+        if not all_classes and allowed is not None and class_name not in allowed:
+            abort(403)
+        if all_classes:
+            if allowed is not None:
+                ph = ",".join("?" for _ in allowed)
+                students = conn.execute(
+                    "SELECT * FROM students WHERE class_name IN (" + ph + ")" + sc_ + " ORDER BY class_name, last_name, first_name",
+                    list(allowed) + sp_).fetchall()
+            else:
+                students = conn.execute(
+                    "SELECT * FROM students WHERE 1=1" + sc_ + " ORDER BY class_name, last_name, first_name", sp_).fetchall()
+        else:
+            students = conn.execute("SELECT * FROM students WHERE class_name = ?" + sc_ + " ORDER BY last_name, first_name", [class_name] + sp_).fetchall()
         output = io.StringIO()
-        output.write("﻿")  # Excel UTF-8 uchun BOM
-        w = csv.writer(output)
-        w.writerow(["Familiya", "Ism", "Sinf", "Test", "Fan", "Ball", "Jami", "Foiz", "Vaqt(soniya)", "Sana", "Coin", "Holat"])
+        output.write("﻿")        # Excel UTF-8 uchun BOM
+        output.write("sep=;\r\n")  # Excel ustunlarga to'g'ri ajratishi uchun
+        w = csv.writer(output, delimiter=";", lineterminator="\r\n")
+        w.writerow(["Familiya", "Ism", "Sinf", "Test", "Fan", "Kod", "Savollar",
+                    "Ball", "Foiz", "Baho", "Belgilangan vaqt", "Sarflangan vaqt",
+                    "Sana", "Coin", "Holat"])
         for s in students:
             subs = conn.execute("SELECT * FROM submissions WHERE student_id = ? AND status != 'in_progress' ORDER BY submitted_at", (s["id"],)).fetchall()
             if not subs:
-                w.writerow([s["last_name"], s["first_name"], s["class_name"], "-", "-", "-", "-", "-", "-", "-", s["coins"] or 0, "Topshirmagan"])
+                w.writerow([s["last_name"], s["first_name"], s["class_name"], "-", "-", "-", "-",
+                            "-", "-", "-", "-", "-", "-", s["coins"] or 0, "Topshirmagan"])
             for sub in subs:
-                t = conn.execute("SELECT title, subject FROM tests WHERE id = ?", (sub["test_id"],)).fetchone()
+                t = conn.execute("SELECT title, subject, code, duration_minutes FROM tests WHERE id = ?", (sub["test_id"],)).fetchone()
+                baho = baho_from_pct(sub["percentage"]) if sub["status"] == "completed" else None
                 w.writerow([
                     s["last_name"], s["first_name"], s["class_name"],
-                    t["title"] if t else "-", t["subject"] if t else "-",
-                    sub["score"], sub["total"], round(sub["percentage"], 1),
-                    sub["duration_seconds"], sub["submitted_at"] or "-", s["coins"] or 0,
+                    t["title"] if t else "-", t["subject"] if t else "-", t["code"] if t else "-",
+                    sub["total"], sub["score"], round(sub["percentage"], 1), baho if baho else "-",
+                    f"{t['duration_minutes']} daq" if t else "-",
+                    fmt_dur_uz(sub["duration_seconds"]),
+                    sub["submitted_at"] or "-", s["coins"] or 0,
                     "XAVF (chetlashtirilgan)" if sub["status"] == "terminated" else "Topshirdi",
                 ])
         return Response(
             output.getvalue(),
             mimetype="text/csv; charset=utf-8",
-            headers={"Content-Disposition": f"attachment; filename=natijalar_{class_name}.csv"},
+            headers={"Content-Disposition": "attachment; filename=natijalar_%s.csv" % ("hamma" if all_classes else class_name)},
         )
     finally:
         conn.close()
