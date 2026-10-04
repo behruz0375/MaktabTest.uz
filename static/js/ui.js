@@ -62,6 +62,27 @@ const UI = {
     }, ms);
   },
 
+  /* --- Yuklanish aylanasi (spinner) --- */
+  spinHTML(text, big) {
+    return `<div class="ui-loading"><span class="ui-spin${big ? " lg" : ""}"></span><span>${this.esc(text || "Yuklanmoqda...")}</span></div>`;
+  },
+  /* Progress elementiga doimiy aylana + yangilanadigan matn qo'yadi (OCR/yuklash) */
+  setLoading(el, text) {
+    if (!el) return;
+    if (!el.querySelector(".ui-spin")) {
+      el.innerHTML = '<span class="ui-spin"></span><span class="ui-spin-txt"></span>';
+      el.style.display = "flex"; el.style.alignItems = "center";
+      el.style.gap = "8px"; el.style.justifyContent = "center";
+    }
+    const t = el.querySelector(".ui-spin-txt");
+    if (t) t.textContent = text || "";
+  },
+  clearLoading(el) {
+    if (!el) return;
+    el.innerHTML = ""; el.textContent = "";
+    el.style.display = ""; el.style.alignItems = ""; el.style.gap = ""; el.style.justifyContent = "";
+  },
+
   /* --- Rejim (qorong'i/yorug') --- */
   initTheme() {
     const saved = localStorage.getItem("mt-theme") || "dark";

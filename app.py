@@ -2576,6 +2576,8 @@ def clear_school_data():
         if "coins" in targets:
             report["coins_reset"] = conn.execute("SELECT COUNT(*) AS c FROM students WHERE school_id = ? AND COALESCE(coins,0) > 0", (sid,)).fetchone()["c"]
             conn.execute("UPDATE students SET coins = 0 WHERE school_id = ?", (sid,))
+            # Faoliyat tarixidagi coinlar ham 0 ga — coin hamma joydan yo'qolsin
+            conn.execute("UPDATE learning_activity SET coins_awarded = 0 WHERE " + stu_of_school, (sid,))
         if "durations" in targets:
             conn.execute("UPDATE learning_activity SET duration_seconds = 0 WHERE " + stu_of_school, (sid,))
             report["durations_reset"] = True

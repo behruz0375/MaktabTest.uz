@@ -129,7 +129,7 @@ const Learning = {
     const box = document.getElementById("rank-content");
     if (!box) return;
     const s = this.student || {};
-    box.innerHTML = '<p class="muted">Yuklanmoqda...</p>';
+    box.innerHTML = UI.spinHTML("Reyting yuklanmoqda...");
     let res = {};
     try { res = await API.get("/api/rankings/student?student_id=" + s.id); } catch (e) { res = {}; }
     if (!res || !res.ok) { box.innerHTML = '<p class="muted">Reytingni yuklab bo\'lmadi.</p>'; return; }

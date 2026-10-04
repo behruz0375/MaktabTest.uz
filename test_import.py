@@ -146,20 +146,74 @@ def _is_complete(cur):
     return bool(cur["text"]) and all(o.get(L) for L in ("A", "B", "C", "D")) and cur["correct"] in ("A", "B", "C", "D")
 
 
+# --- Javoblar kaliti (javoblar alohida joyda berilgan bo'lsa) ---
+# "Javoblar", "Kalit", "To'g'ri javoblar", "Answer key" sarlavhasi
+KEY_HEADER_RE = re.compile(
+    r"^\s*(javoblar(?:\s*kaliti)?|javob\s*kaliti|kalit(?:lar)?|to'?g'?ri\s*javoblar|answer\s*keys?|answers?|kalit\s*javoblar)\s*[:\-.]?\s*$",
+    re.I,
+)
+# Raqam+harf juftligi: "1-B", "1) B", "1.B", "1 B", "№1 C" ... (harfdan keyin boshqa harf kelmasin)
+KEY_PAIR_RE = re.compile(r"№?\s*(\d{1,3})\s*[-).:–—]?\s*([ABCDabcd])(?![A-Za-zА-Яа-я])")
+
+
+def _answer_key_pairs(line):
+    """Qator javoblar kaliti bo'lsa {savol_raqami: harf} qaytaradi, aks holda None.
+    Masalan: '1-B 2-C 3-A 4-D' yoki 'Javoblar: 1) B, 2) C'."""
+    pairs = {}
+    for num, let in KEY_PAIR_RE.findall(line):
+        pairs[int(num)] = let.upper()
+    if not pairs:
+        return None
+    # Juftliklar va sarlavha so'zlaridan tashqari deyarli hech narsa qolmasa — bu kalit
+    leftover = KEY_PAIR_RE.sub(" ", line)
+    leftover = re.sub(r"(?i)(javoblar|javob|kalit|answer|key|to'?g'?ri|lar)", " ", leftover)
+    leftover = re.sub(r"[\s,;.\-–—)|:()\[\]№#]+", "", leftover)
+    return pairs if len(leftover) <= 2 else None
+
+
+def _new_q(num=None, text=""):
+    return {"num": num, "text": text, "opts": {}, "correct": ""}
+
+
 def parse_text_lines(lines):
-    out = []
-    cur = {"text": "", "opts": {}, "correct": ""}
+    questions = []
+    cur = _new_q()
+    answer_key = {}        # savol_raqami -> harf (alohida joyda berilgan javoblar)
+    key_seq = []           # kalit bo'limida raqamsiz ketma-ket harflar
+    in_key_section = False
 
     def flush():
-        o = cur["opts"]
-        q = _q(cur["text"], o.get("A"), o.get("B"), o.get("C"), o.get("D"), cur["correct"])
-        if q:
-            out.append(q)
+        if cur["text"]:
+            questions.append(cur)
 
     for raw in lines:
         line = _clean(raw)
         if not line:
             continue
+
+        # "Javoblar:" kabi sarlavha — bundan keyin javoblar kaliti keladi
+        if KEY_HEADER_RE.match(line):
+            if cur["text"]:
+                flush(); cur = _new_q()
+            in_key_section = True
+            continue
+
+        # Javoblar kaliti qatori ("1-B 2-C 3-A" / "Javoblar: 1) B")
+        kp = _answer_key_pairs(line)
+        if kp is not None:
+            if cur["text"]:
+                flush(); cur = _new_q()
+            answer_key.update(kp)
+            in_key_section = True
+            continue
+
+        # Kalit bo'limida raqamsiz yakka harf ("B" o'z qatorida) — tartib bo'yicha
+        if in_key_section:
+            bm = BARE_ANS_RE.match(line)
+            if bm:
+                key_seq.append(bm.group(1).upper())
+                continue
+
         # To'g'ri javob belgisi: variant boshida ★/✓ ("* B) ...") yoki oxirida
         mark_correct = False
         m_lead = re.match(r"^\s*[\*✓✔]+\s*([ABCDabcd])\b", line)
@@ -175,6 +229,7 @@ def parse_text_lines(lines):
         if am:
             cur["correct"] = am.group(2).upper()
         elif om:
+            in_key_section = False
             L = om.group(1).upper()
             txt = om.group(2).strip()
             if re.search(r"[\*✓✔]\s*$", txt):   # variant oxiridagi belgi ham to'g'ri javob
@@ -184,25 +239,24 @@ def parse_text_lines(lines):
             if mark_correct and not cur["correct"]:
                 cur["correct"] = L
         elif qm:
+            in_key_section = False
             if cur["text"]:
                 flush()
-            cur = {"text": qm.group(2).strip(), "opts": {}, "correct": ""}
+            cur = _new_q(int(qm.group(1)) if qm.group(1).isdigit() else None, qm.group(2).strip())
         elif bare and cur["opts"] and not cur["correct"]:
             # 4 ta variantdan keyin yakka o'zi turgan harf — bu javob
             cur["correct"] = bare.group(1).upper()
         elif not cur["text"]:
-            cur = {"text": line, "opts": {}, "correct": ""}
+            cur = _new_q(None, line)
         elif not cur["opts"]:
             # variantlar hali boshlanmagan — savol matnining davomi
             cur["text"] += " " + line
         elif _is_complete(cur):
-            # oldingi savol allaqachon to'liq — raqamlanmagan bo'lsa ham,
-            # bu ENDI YANGI savol (avval bu holatda qator butunlay
-            # tashlab yuborilar edi — shu joy tuzatildi)
+            # oldingi savol to'liq — bu ENDI YANGI savol
             flush()
-            cur = {"text": line, "opts": {}, "correct": ""}
+            cur = _new_q(None, line)
         else:
-            # variantlar hali to'liq emas — oxirgi variantning davomi deb olamiz
+            # variantlar hali to'liq emas — oxirgi variantning davomi
             for L in ("D", "C", "B", "A"):
                 if cur["opts"].get(L):
                     cur["opts"][L] += " " + line
@@ -211,6 +265,24 @@ def parse_text_lines(lines):
                 cur["text"] += " " + line
     if cur["text"]:
         flush()
+
+    # Raqamsiz ketma-ket kalitni tartib bo'yicha raqamlarga bog'laymiz
+    if key_seq and not answer_key:
+        for i, L in enumerate(key_seq, start=1):
+            answer_key[i] = L
+
+    # Natija: inline javob bo'lmasa — javoblar kalitidan (raqam yoki tartib bo'yicha) olamiz
+    out = []
+    for idx, q in enumerate(questions, start=1):
+        correct = q["correct"]
+        if correct not in ("A", "B", "C", "D"):
+            kl = answer_key.get(q["num"]) or answer_key.get(idx)
+            if kl in ("A", "B", "C", "D"):
+                correct = kl
+        o = q["opts"]
+        built = _q(q["text"], o.get("A"), o.get("B"), o.get("C"), o.get("D"), correct)
+        if built:
+            out.append(built)
     return out
 
 

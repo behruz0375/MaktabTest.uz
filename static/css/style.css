@@ -1134,16 +1134,29 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 .chk-label { display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 700; color: var(--text); }
 .chk-label input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--primary-1); cursor: pointer; }
 
-/* Video yuklanish spinneri */
+/* Video yuklanish/buferlanish spinneri (YouTube uslubi — markazda aylanadi) */
 .player-media-box { position: relative; }
 .spinner {
-  position: absolute; top: 50%; left: 50%; width: 60px; height: 60px;
-  margin: -30px 0 0 -30px; border: 6px solid rgba(255,255,255,.25);
-  border-top-color: var(--success-2); border-radius: 50%;
-  animation: spin .8s linear infinite; display: none; z-index: 3;
+  position: absolute; top: 50%; left: 50%; width: 64px; height: 64px;
+  margin: -32px 0 0 -32px; border: 5px solid rgba(255,255,255,.3);
+  border-top-color: #fff; border-radius: 50%;
+  animation: spin .8s linear infinite; display: none; z-index: 7;
+  box-shadow: 0 2px 14px rgba(0,0,0,.45);
 }
 .spinner.on { display: block; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Umumiy yuklanish aylanasi (ro'yxatlar, OCR, yuklash — "Ishga tushirilmoqda...") */
+.ui-spin {
+  display: inline-block; width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box;
+  border: 2.5px solid var(--inp-border); border-top-color: var(--primary-2);
+  border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle;
+}
+.ui-spin.lg { width: 42px; height: 42px; border-width: 4px; }
+.ui-loading {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  color: var(--muted); font-weight: 600; padding: 26px 12px; text-align: center;
+}
 
 /* Telegram uslubidagi "yuklab ko'rish" tugmasi (video ustida) */
 .player-media-box { min-height: 120px; }
