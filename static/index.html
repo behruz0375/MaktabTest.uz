@@ -904,6 +904,21 @@
           <button id="game-coins-btn" class="btn btn-secondary">🪙 O'yin coinini sozlash</button>
         </div>
 
+        <div class="card card-narrow" id="test-options-box" style="display:none">
+          <h3 style="margin-bottom:6px">📝 Test sozlamalari</h3>
+          <label class="chk-label" style="margin:10px 0"><input type="checkbox" id="opt-shuffle"> 🔀 Savol va variantlarni aralashtirish (har o'quvchiga boshqa tartib — nusxadan himoya)</label>
+          <label class="chk-label" style="margin:10px 0"><input type="checkbox" id="opt-review"> 📝 Test tugagach o'quvchi xatolarini ko'rsin (to'g'ri javoblar bilan)</label>
+          <button id="test-options-save" class="btn btn-success btn-sm">💾 Saqlash</button>
+        </div>
+
+        <div class="card card-narrow" id="telegram-box" style="display:none">
+          <h3 style="margin-bottom:6px">📨 Telegram bot — ota-onaga bildirishnoma</h3>
+          <p class="muted">Telegramда <b>@BotFather</b> orqali bot yarating va uning <b>tokenini</b> shu yerga joylang. So'ng ota-onalar botga kirib <b>ota-ona loginini</b> yuborsa — farzandi test topshirganda natija ularga avtomatik keladi.</p>
+          <div class="field-row"><label>Bot token</label><input id="tg-token" class="inp" type="text" placeholder="123456789:AA..."></div>
+          <button id="tg-save" class="btn btn-success btn-sm">💾 Saqlash</button>
+          <div id="tg-status" class="muted" style="margin-top:8px"></div>
+        </div>
+
         <div class="card card-narrow" id="reset-coins-box" style="display:none;border:1px solid var(--danger-1)">
           <h3 style="margin-bottom:6px;color:var(--danger-1)">🪙 Coinlarni nollash</h3>
           <p class="muted">Barcha o'quvchilarning coinlari <b>0</b> ga tushadi va hamma joydan (reyting, profil, ota-ona paneli, faoliyat tarixi) yo'qoladi. O'quvchilar, darslar va natijalar saqlanadi.</p>

@@ -6,8 +6,12 @@ import os
 import io
 import csv
 import json
+import time
 import secrets
 import functools
+import threading
+import urllib.request
+import urllib.parse
 from datetime import datetime, timedelta
 
 from flask import Flask, request, jsonify, session, send_from_directory, send_file, Response, abort
@@ -218,6 +222,117 @@ def get_game_coins(school_id):
         return max(0, int(val))
     except (TypeError, ValueError):
         return GAME_COINS_DEFAULT
+
+
+def get_flag(name, school_id, default=True):
+    """Maktab sozlamasi (1/0). Masalan 'shuffle', 'review'. Standart — yoqilgan."""
+    key = f"{name}:{school_id}" if school_id else name
+    val = get_setting(key)
+    if val is None:
+        val = get_setting(name)
+    if val is None:
+        return default
+    return str(val) == "1"
+
+
+def set_flag(name, school_id, on):
+    key = f"{name}:{school_id}" if school_id else name
+    set_setting(key, "1" if on else "0")
+
+
+# --------------------------------------------------------------------------
+# TELEGRAM BOT — ota-onaga bildirishnoma (stdlib urllib bilan, kutubxonasiz)
+# --------------------------------------------------------------------------
+def tg_token():
+    return (get_setting("tg_token") or "").strip()
+
+
+def tg_api(method, params=None):
+    tok = tg_token()
+    if not tok:
+        return None
+    url = f"https://api.telegram.org/bot{tok}/{method}"
+    data = urllib.parse.urlencode(params or {}).encode()
+    try:
+        with urllib.request.urlopen(url, data=data, timeout=40) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except Exception:
+        return None
+
+
+def tg_send(chat_id, text):
+    if not chat_id:
+        return
+    tg_api("sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+
+
+def tg_send_async(chat_id, text):
+    threading.Thread(target=tg_send, args=(chat_id, text), daemon=True).start()
+
+
+def _tg_handle_update(upd):
+    msg = upd.get("message") or upd.get("edited_message")
+    if not msg:
+        return
+    chat_id = (msg.get("chat") or {}).get("id")
+    text = (msg.get("text") or "").strip()
+    if not chat_id:
+        return
+    if text.startswith("/start"):
+        parts = text.split(maxsplit=1)
+        payload = parts[1].strip() if len(parts) > 1 else ""
+        if payload:
+            text = payload   # deep-link: /start <ota-ona_logini>
+        else:
+            tg_send(chat_id, "👋 Assalomu alaykum! Farzandingizning <b>ota-ona loginini</b> shu yerga yuboring — "
+                             "shunda u test topshirsa, natija sizga keladi.")
+            return
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT id, first_name, last_name FROM students WHERE lower(parent_username)=lower(?)",
+            (text,),
+        ).fetchone()
+        if row:
+            conn.execute("UPDATE students SET parent_tg_chat=? WHERE id=?", (str(chat_id), row["id"]))
+            conn.commit()
+            tg_send(chat_id, f"✅ Ulandi! Endi <b>{row['first_name']} {row['last_name']}</b> test topshirsa, "
+                             f"natija shu yerga keladi.")
+        else:
+            tg_send(chat_id, "❌ Bunday ota-ona logini topilmadi. Loginni o'qituvchi/zavuchdan oling va qayta yuboring.")
+    finally:
+        conn.close()
+
+
+_tg_started = False
+_tg_lock = threading.Lock()
+
+
+def _tg_poll_loop():
+    offset = 0
+    while True:
+        if not tg_token():
+            time.sleep(5)
+            continue
+        res = tg_api("getUpdates", {"offset": offset, "timeout": 30})
+        if not res or not res.get("ok"):
+            time.sleep(3)
+            continue
+        for upd in res.get("result", []):
+            offset = upd["update_id"] + 1
+            try:
+                _tg_handle_update(upd)
+            except Exception:
+                pass
+
+
+def start_tg_polling():
+    global _tg_started
+    with _tg_lock:
+        if _tg_started:
+            return
+        _tg_started = True
+        threading.Thread(target=_tg_poll_loop, daemon=True).start()
 
 
 def get_teacher_classes(conn, teacher_id):
@@ -1330,11 +1445,30 @@ def student_start():
             submission_id = cur.lastrowid
         conn.commit()
 
-        questions = [{
-            "id": q["id"], "text": q["text"],
-            "option_a": q["option_a"], "option_b": q["option_b"],
-            "option_c": q["option_c"], "option_d": q["option_d"],
-        } for q in qs]
+        # Savol va variantlarni aralashtirish (anti-cheat) — har o'quvchiga boshqacha tartib
+        shuffle_on = get_flag("shuffle", t_school, True)
+        rng = secrets.SystemRandom()
+        q_list = list(qs)
+        if shuffle_on:
+            rng.shuffle(q_list)
+        LET = ["A", "B", "C", "D"]
+        questions = []
+        layout_opts = {}
+        for q in q_list:
+            orig = {"A": q["option_a"], "B": q["option_b"], "C": q["option_c"], "D": q["option_d"]}
+            perm = LET[:]
+            if shuffle_on:
+                rng.shuffle(perm)
+            disp = {LET[i]: orig[perm[i]] for i in range(4)}   # ko'rsatiladigan harf -> matn
+            layout_opts[str(q["id"])] = "".join(perm)          # pozitsiya i -> asl harf perm[i]
+            questions.append({
+                "id": q["id"], "text": q["text"],
+                "option_a": disp["A"], "option_b": disp["B"],
+                "option_c": disp["C"], "option_d": disp["D"],
+            })
+        layout = {"order": [q["id"] for q in q_list], "opts": layout_opts}
+        conn.execute("UPDATE submissions SET layout_json=? WHERE id=?", (json.dumps(layout), submission_id))
+        conn.commit()
 
         return jsonify({
             "ok": True,
@@ -1357,10 +1491,24 @@ def student_start():
 def _grade_and_finish(conn, sub, answers, status, violation_reason=None):
     qs = conn.execute("SELECT id, correct_option FROM questions WHERE test_id = ?", (sub["test_id"],)).fetchall()
     total = len(qs)
+    # Aralashtirilgan bo'lsa — o'quvchi bosgan (ko'rsatilgan) harfni asl harfga o'tkazamiz
+    opts_layout = {}
+    try:
+        opts_layout = (json.loads(sub["layout_json"]) or {}).get("opts", {}) if sub["layout_json"] else {}
+    except Exception:
+        opts_layout = {}
     correct = 0
     for q in qs:
         sel = answers.get(str(q["id"]))
-        if sel and sel == q["correct_option"]:
+        if not sel:
+            continue
+        perm = opts_layout.get(str(q["id"]))
+        if perm and len(perm) == 4:
+            idx = "ABCD".find(sel)
+            sel_orig = perm[idx] if 0 <= idx < 4 else None   # ko'rsatilgan harf -> asl harf
+        else:
+            sel_orig = sel
+        if sel_orig == q["correct_option"]:
             correct += 1
     wrong = total - correct
     percentage = (correct / total * 100.0) if total else 0.0
@@ -1378,9 +1526,75 @@ def _grade_and_finish(conn, sub, answers, status, violation_reason=None):
     # Test yechish uchun coin BERILMAYDI (coin faqat bilim olishда)
     coins = 0
     conn.commit()
+    # Ota-onaga Telegram xabari (ulangan va bot sozlangan bo'lsa)
+    try:
+        if tg_token():
+            st = conn.execute("SELECT first_name, last_name, parent_tg_chat FROM students WHERE id=?", (sub["student_id"],)).fetchone()
+            if st and st["parent_tg_chat"]:
+                tst = conn.execute("SELECT title, subject FROM tests WHERE id=?", (sub["test_id"],)).fetchone()
+                name = f"{st['first_name']} {st['last_name']}"
+                title = tst["title"] if tst else "Test"
+                subj = tst["subject"] if tst else ""
+                emoji = "🎉" if percentage >= 60 else "📘"
+                msg = (f"{emoji} <b>{name}</b> \"{title}\"{(' — ' + subj) if subj else ''} testini yakunladi.\n"
+                       f"Natija: <b>{correct}/{total}</b> ({round(percentage)}%)\n"
+                       f"✅ To'g'ri: {correct}   ❌ Xato: {wrong}")
+                if status == "terminated":
+                    msg += f"\n⚠️ Test to'xtatildi: {violation_reason or 'qoidabuzarlik'}"
+                tg_send_async(st["parent_tg_chat"], msg)
+    except Exception:
+        pass
     return {"score": correct, "correct_count": correct, "wrong_count": wrong,
             "total": total, "percentage": round(percentage, 1), "duration_seconds": duration,
             "coins": coins}
+
+
+def _build_review(conn, sub):
+    """Xatolar ustida ishlash: har savol uchun ko'rsatilgan variantlar,
+    o'quvchi tanlagan javob va to'g'ri javob (ko'rsatilgan tartibda)."""
+    try:
+        answers = json.loads(sub["answers_json"] or "{}")
+    except Exception:
+        answers = {}
+    try:
+        layout = json.loads(sub["layout_json"] or "{}")
+    except Exception:
+        layout = {}
+    order = layout.get("order") or []
+    opts_layout = layout.get("opts", {})
+    rows = conn.execute("SELECT * FROM questions WHERE test_id=?", (sub["test_id"],)).fetchall()
+    qmap = {str(r["id"]): r for r in rows}
+    if not order:
+        order = [r["id"] for r in rows]
+    out = []
+    for qid in order:
+        q = qmap.get(str(qid))
+        if not q:
+            continue
+        orig = {"A": q["option_a"], "B": q["option_b"], "C": q["option_c"], "D": q["option_d"]}
+        perm = opts_layout.get(str(qid))
+        if perm and len(perm) == 4:
+            disp = {"ABCD"[i]: orig[perm[i]] for i in range(4)}
+            correct_disp = "ABCD"[perm.index(q["correct_option"])]
+        else:
+            disp = orig
+            correct_disp = q["correct_option"]
+        chosen = answers.get(str(qid))
+        out.append({
+            "text": q["text"], "options": disp, "chosen": chosen,
+            "correct": correct_disp, "is_correct": bool(chosen) and chosen == correct_disp,
+        })
+    return out
+
+
+def _review_if_allowed(conn, sub, result):
+    """Natijaga 'review' qo'shamiz — agar o'qituvchi ruxsat bergan bo'lsa."""
+    trow = conn.execute("SELECT school_id FROM tests WHERE id=?", (sub["test_id"],)).fetchone()
+    sch = trow["school_id"] if trow else None
+    if get_flag("review", sch, True):
+        fresh = conn.execute("SELECT * FROM submissions WHERE id=?", (sub["id"],)).fetchone()
+        result["review"] = _build_review(conn, fresh)
+    return result
 
 
 @app.route("/api/student/submit", methods=["POST"])
@@ -1397,12 +1611,12 @@ def student_submit():
             return jsonify({"ok": False, "error": "Sessiya topilmadi"}), 400
         if sub["status"] != "in_progress":
             # Allaqachon yakunlangan — natijani qaytaramiz
-            return jsonify({"ok": True, "result": {
-                "score": sub["score"], "correct_count": sub["correct_count"],
-                "wrong_count": sub["wrong_count"], "total": sub["total"],
-                "percentage": round(sub["percentage"], 1)}})
+            res = {"score": sub["score"], "correct_count": sub["correct_count"],
+                   "wrong_count": sub["wrong_count"], "total": sub["total"],
+                   "percentage": round(sub["percentage"], 1)}
+            return jsonify({"ok": True, "result": _review_if_allowed(conn, sub, res)})
         result = _grade_and_finish(conn, sub, answers, "completed")
-        return jsonify({"ok": True, "result": result})
+        return jsonify({"ok": True, "result": _review_if_allowed(conn, sub, result)})
     finally:
         conn.close()
 
@@ -3194,6 +3408,63 @@ def set_game_coins_ep():
         return jsonify({"ok": False, "error": "Coin 0 dan 500 gacha bo'lsin"}), 400
     set_setting(game_coins_key(scope_school_id()), coins)
     return jsonify({"ok": True, "coins": coins})
+
+
+@app.route("/api/settings/test-options", methods=["GET"])
+@teacher_required
+def get_test_options_ep():
+    sid = scope_school_id()
+    return jsonify({"ok": True, "shuffle": get_flag("shuffle", sid, True),
+                    "review": get_flag("review", sid, True)})
+
+
+@app.route("/api/settings/test-options", methods=["POST"])
+@role_required("owner", "zavuch")
+def set_test_options_ep():
+    sid = scope_school_id()
+    if sid is None:
+        return jsonify({"ok": False, "error": "Avval maktabga kiring"}), 400
+    data = request.get_json(force=True, silent=True) or {}
+    set_flag("shuffle", sid, bool(data.get("shuffle")))
+    set_flag("review", sid, bool(data.get("review")))
+    return jsonify({"ok": True, "shuffle": bool(data.get("shuffle")), "review": bool(data.get("review"))})
+
+
+@app.route("/api/settings/telegram", methods=["GET"])
+@teacher_required
+def get_telegram_ep():
+    tok = tg_token()
+    bot = None
+    if tok:
+        info = tg_api("getMe")
+        if info and info.get("ok"):
+            bot = info["result"].get("username")
+    return jsonify({"ok": True, "configured": bool(tok), "bot_username": bot})
+
+
+@app.route("/api/settings/telegram", methods=["POST"])
+@role_required("owner")
+def set_telegram_ep():
+    data = request.get_json(force=True, silent=True) or {}
+    token = (data.get("token") or "").strip()
+    set_setting("tg_token", token)
+    bot = None
+    if token:
+        info = tg_api("getMe")
+        if not (info and info.get("ok")):
+            set_setting("tg_token", "")   # noto'g'ri token — tozalaymiz
+            return jsonify({"ok": False, "error": "Token noto'g'ri yoki bot topilmadi. @BotFather'dan tekshiring."}), 400
+        bot = info["result"].get("username")
+        start_tg_polling()
+    return jsonify({"ok": True, "configured": bool(token), "bot_username": bot})
+
+
+# Telegram pollingни ishga tushiramiz (debug reloader'ning asosiy jarayonida yoki prod'da)
+if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or os.environ.get("FLASK_DEBUG", "1") != "1":
+    try:
+        start_tg_polling()
+    except Exception:
+        pass
 
 
 # --------------------------------------------------------------------------

@@ -273,8 +273,9 @@ const Student = {
     this.showResult(res.result);
   },
 
-  showResult(r) {
-    Fireworks.start(6500);
+  showResult(r, noFx) {
+    if (!noFx) Fireworks.start(6500);
+    const hasReview = Array.isArray(r.review) && r.review.length;
     UI.modal(`
       <span class="modal-icon">🎉</span>
       <h2 style="text-align:center">Tabriklaymiz! Siz testni tugatdingiz</h2>
@@ -284,13 +285,46 @@ const Student = {
         <span class="result-chip no">✘ Xato: ${r.wrong_count}</span>
         <span class="result-chip pct">📊 ${r.percentage}%</span>
       </div>
-      <div style="text-align:center;margin-top:20px">
+      <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        ${hasReview ? '<button class="btn btn-secondary" id="show-review">📝 Xatolar ustida ishlash</button>' : ""}
         <button class="btn btn-primary btn-lg" id="go-home">🏠 Bosh sahifaga qaytish</button>
       </div>
     `, { closable: false });
+    if (hasReview) document.getElementById("show-review").onclick = () => this.showReview(r);
     document.getElementById("go-home").onclick = () => {
       UI.closeModal(); Fireworks.stop(); this.reset(); UI.showView("view-login");
     };
+  },
+
+  /* Xatolar ustida ishlash — har savolda to'g'ri va o'quvchi javobi */
+  showReview(r) {
+    const rows = (r.review || []).map((q, i) => {
+      const opts = ["A", "B", "C", "D"].map((L) => {
+        const text = q.options[L] || "";
+        const isCorrect = L === q.correct;
+        const isChosen = L === q.chosen;
+        let cls = "rv-opt";
+        if (isCorrect) cls += " rv-correct";
+        else if (isChosen) cls += " rv-wrong";
+        const tag = isCorrect ? " ✔" : (isChosen ? " ✘" : "");
+        return `<div class="${cls}"><b>${L})</b> ${UI.esc(text)}${tag}</div>`;
+      }).join("");
+      const ok = q.is_correct;
+      return `<div class="rv-q ${ok ? "ok" : "bad"}">
+        <div class="rv-qhead"><span>${i + 1}. ${UI.esc(q.text)}</span><span class="rv-badge ${ok ? "ok" : "bad"}">${ok ? "To'g'ri" : "Xato"}</span></div>
+        ${opts}
+        ${!q.chosen ? '<div class="rv-note">Javob bermagansiz</div>' : ""}
+      </div>`;
+    }).join("");
+    UI.modal(`
+      <h2 style="text-align:center">📝 Xatolar ustida ishlash</h2>
+      <p class="muted" style="text-align:center">🟢 Yashil — to'g'ri javob • 🔴 Qizil — sizning xato javobingiz</p>
+      <div class="review-list">${rows}</div>
+      <div style="text-align:center;margin-top:16px">
+        <button class="btn btn-primary" id="rv-back">← Natijaga qaytish</button>
+      </div>
+    `, { large: true, closable: false });
+    document.getElementById("rv-back").onclick = () => this.showResult(r, true);
   },
 
   /* ---------- Anti-cheat (nazorat) ---------- */

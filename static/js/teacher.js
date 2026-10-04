@@ -73,6 +73,12 @@ const Teacher = {
     // Coinlarni nollash (boshqaruv/zavuch)
     const rcBtn = document.getElementById("reset-coins-btn");
     if (rcBtn) rcBtn.onclick = () => this.resetCoins();
+    // Test sozlamalari (aralashtirish / xatolar ustida ishlash)
+    const toBtn = document.getElementById("test-options-save");
+    if (toBtn) toBtn.onclick = () => this.saveTestOptions();
+    // Telegram bot
+    const tgBtn = document.getElementById("tg-save");
+    if (tgBtn) tgBtn.onclick = () => this.saveTelegram();
     // Telefon burger menyu
     const burger = document.getElementById("burger");
     const overlay = document.getElementById("sidebar-overlay");
@@ -371,6 +377,10 @@ const Teacher = {
     setDisp("game-coins-box", isAdmin && entered);
     // Coinlarni nollash — zavuch/boshqaruv (maktabga kirgan holda)
     setDisp("reset-coins-box", isAdmin && entered);
+    // Test sozlamalari — zavuch/boshqaruv
+    setDisp("test-options-box", isAdmin && entered);
+    // Telegram bot — faqat boshqaruv egasi (global sozlama)
+    setDisp("telegram-box", isOwner);
   },
 
   async enterSchool(school) {
@@ -482,7 +492,52 @@ const Teacher = {
     if (id === "profile") this.loadProfile();
     if (id === "live") this.startLive(); else this.stopLive();
     if (id === "schools") this.loadSchools();
+    if (id === "settings") { this.loadTestOptions(); this.loadTelegram(); }
     window.scrollTo(0, 0);
+  },
+
+  /* Test sozlamalari (aralashtirish / xatolar ustida ishlash) ni yuklaymiz */
+  async loadTestOptions() {
+    const box = document.getElementById("test-options-box");
+    if (!box || box.style.display === "none") return;
+    const res = await API.get("/api/settings/test-options");
+    if (!res.ok) return;
+    const sh = document.getElementById("opt-shuffle"), rv = document.getElementById("opt-review");
+    if (sh) sh.checked = !!res.shuffle;
+    if (rv) rv.checked = !!res.review;
+  },
+  async saveTestOptions() {
+    const shuffle = document.getElementById("opt-shuffle").checked;
+    const review = document.getElementById("opt-review").checked;
+    const res = await API.post("/api/settings/test-options", { shuffle, review });
+    if (res.ok) UI.toast("Test sozlamalari saqlandi ✔", "ok");
+    else UI.toast(res.error || "Xatolik", "err");
+  },
+
+  /* Telegram bot sozlamasi (faqat boshqaruv egasi) */
+  async loadTelegram() {
+    const box = document.getElementById("telegram-box");
+    if (!box || box.style.display === "none") return;
+    const st = document.getElementById("tg-status");
+    const res = await API.get("/api/settings/telegram");
+    if (!res || !res.ok) return;
+    if (res.configured) {
+      st.innerHTML = res.bot_username
+        ? `✅ Ulangan: <b>@${UI.esc(res.bot_username)}</b>. Ota-onalarga ayting: <b>t.me/${UI.esc(res.bot_username)}</b> ga kirib ota-ona loginини yuborsin.`
+        : "✅ Token saqlangan.";
+    } else {
+      st.textContent = "⚠️ Hali ulanmagan. Token joylang.";
+    }
+  },
+  async saveTelegram() {
+    const token = document.getElementById("tg-token").value.trim();
+    const st = document.getElementById("tg-status");
+    st.textContent = "Tekshirilmoqda...";
+    const res = await API.post("/api/settings/telegram", { token });
+    if (!res.ok) { st.textContent = ""; return UI.toast(res.error || "Xatolik", "err", 6000); }
+    document.getElementById("tg-token").value = "";
+    UI.toast(token ? "Telegram bot ulandi ✔" : "Telegram o'chirildi", "ok");
+    this.loadTelegram();
   },
 
   renderParClassButtons() {

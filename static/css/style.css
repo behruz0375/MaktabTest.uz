@@ -1302,6 +1302,20 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 }
 .rank-help b { color: var(--text); }
 
+/* ===== Xatolar ustida ishlash (review) ===== */
+.review-list { display: flex; flex-direction: column; gap: 14px; margin: 16px 0; text-align: left; }
+.rv-q { background: var(--inp-bg); border: 1px solid var(--card-border); border-left: 4px solid var(--success-1); border-radius: 14px; padding: 14px 16px; }
+.rv-q.bad { border-left-color: var(--danger-1); }
+.rv-qhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; font-weight: 700; margin-bottom: 10px; line-height: 1.4; }
+.rv-badge { flex-shrink: 0; padding: 3px 11px; border-radius: 999px; font-size: .76rem; font-weight: 800; color: #fff; }
+.rv-badge.ok { background: linear-gradient(135deg, var(--success-1), var(--success-2)); }
+.rv-badge.bad { background: linear-gradient(135deg, var(--danger-1), var(--danger-2)); }
+.rv-opt { padding: 8px 12px; border-radius: 10px; margin-bottom: 6px; font-size: .92rem; border: 1px solid transparent; }
+.rv-opt b { margin-right: 6px; }
+.rv-correct { background: rgba(35, 196, 131, .18); border-color: var(--success-1); color: var(--text); font-weight: 600; }
+.rv-wrong { background: rgba(255, 84, 112, .16); border-color: var(--danger-1); color: var(--text); text-decoration: line-through; }
+.rv-note { color: var(--danger-1); font-size: .82rem; font-weight: 700; margin-top: 4px; }
+
 /* Kunlik vaqt taqsimoti (ota-ona / o'qituvchi) */
 .daily-time-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .daily-time-row {
