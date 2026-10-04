@@ -21,8 +21,273 @@
 
   <!-- ================= KIRISH (LOGIN) ================= -->
   <div id="view-login" class="view active">
-    <div class="login-wrap">
+
+    <!-- ===== Bosh sahifa (landing): header + sectionlar + footer ===== -->
+    <div id="site-landing">
+
+      <!-- Orqa fon: kitob o'qib o'tirgan bola -->
+      <div class="reader-scene" aria-hidden="true">
+        <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="rs-shirt" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" style="stop-color:var(--primary-1)"/>
+              <stop offset="1" style="stop-color:var(--primary-2)"/>
+            </linearGradient>
+            <linearGradient id="rs-book" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" style="stop-color:var(--accent)"/>
+              <stop offset="1" style="stop-color:var(--primary-1)"/>
+            </linearGradient>
+          </defs>
+
+          <ellipse cx="120" cy="214" rx="80" ry="12" fill="rgba(0,0,0,.18)"/>
+
+          <g class="reader-body">
+            <!-- chalishtirilgan oyoqlar -->
+            <rect x="64" y="176" width="112" height="30" rx="15" fill="#3f4a86"/>
+            <rect x="72" y="184" width="96" height="26" rx="13" fill="#4a57a0" transform="rotate(-4 120 197)"/>
+
+            <!-- qo'llar -->
+            <rect x="78" y="140" width="26" height="52" rx="13" fill="url(#rs-shirt)"/>
+            <rect x="136" y="140" width="26" height="52" rx="13" fill="url(#rs-shirt)"/>
+
+            <!-- tana / ko'ylak -->
+            <path d="M88 132 q32 -22 64 0 l6 44 q-38 16 -76 0 z" fill="url(#rs-shirt)"/>
+
+            <!-- bo'yin -->
+            <rect x="112" y="112" width="16" height="18" rx="7" fill="#f0b892"/>
+
+            <!-- bosh -->
+            <circle cx="120" cy="92" r="30" fill="#f6c9a4"/>
+            <path d="M90 90 q-4 -40 30 -42 q34 2 30 42 q-10 -18 -30 -16 q-20 -2 -30 16 z" fill="#5b3a29"/>
+            <circle cx="90" cy="94" r="6" fill="#f0b892"/>
+
+            <!-- yuz -->
+            <g class="rs-eyes">
+              <circle cx="110" cy="96" r="3.2" fill="#3a2a22"/>
+              <circle cx="128" cy="96" r="3.2" fill="#3a2a22"/>
+            </g>
+            <path d="M112 106 q8 6 16 0" fill="none" stroke="#b5654a" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="104" cy="104" r="4" fill="#ff9bb0" opacity=".5"/>
+            <circle cx="136" cy="104" r="4" fill="#ff9bb0" opacity=".5"/>
+
+            <!-- ochiq kitob -->
+            <g class="rs-book">
+              <path d="M120 150 L82 160 Q80 176 84 186 L120 180 Z" fill="#fdf6e9" stroke="rgba(0,0,0,.12)" stroke-width="1.5"/>
+              <path d="M120 150 L158 160 Q160 176 156 186 L120 180 Z" fill="#fbf0dd" stroke="rgba(0,0,0,.12)" stroke-width="1.5"/>
+              <path d="M120 150 L120 180" stroke="url(#rs-book)" stroke-width="3" stroke-linecap="round"/>
+              <path d="M92 166 l20 -4 M94 172 l18 -3" stroke="rgba(0,0,0,.18)" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M128 162 l20 4 M126 168 l20 4" stroke="rgba(0,0,0,.18)" stroke-width="1.6" stroke-linecap="round"/>
+              <path class="rs-flip" d="M120 150 L158 160 Q160 176 156 186 L120 180 Z" fill="#ffffff" opacity=".92"/>
+            </g>
+          </g>
+
+          <!-- ko'tarilayotgan bilim uchqunlari -->
+          <path class="rs-spark s1" d="M120 66 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z" fill="var(--primary-2)"/>
+          <path class="rs-spark s2" d="M152 80 l2.5 6 6 2.5 -6 2.5 -2.5 6 -2.5 -6 -6 -2.5 6 -2.5 z" fill="var(--accent)"/>
+          <circle class="rs-spark s3" cx="94" cy="78" r="4" fill="var(--primary-1)"/>
+        </svg>
+      </div>
+
+      <!-- Orqa fon: kitob o'qib o'tirgan qizcha (o'ng tomon) -->
+      <div class="reader-scene right" aria-hidden="true">
+        <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="rs2-dress" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" style="stop-color:var(--primary-2)"/>
+              <stop offset="1" style="stop-color:var(--accent)"/>
+            </linearGradient>
+            <linearGradient id="rs2-book" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" style="stop-color:var(--primary-1)"/>
+              <stop offset="1" style="stop-color:var(--primary-2)"/>
+            </linearGradient>
+          </defs>
+
+          <ellipse cx="120" cy="214" rx="78" ry="12" fill="rgba(0,0,0,.18)"/>
+
+          <g class="reader-body">
+            <!-- ikki o'rim soch -->
+            <ellipse cx="84" cy="98" rx="14" ry="20" fill="#6b4a2f"/>
+            <ellipse cx="156" cy="98" rx="14" ry="20" fill="#6b4a2f"/>
+            <circle cx="84" cy="80" r="4" fill="var(--primary-1)"/>
+            <circle cx="156" cy="80" r="4" fill="var(--primary-1)"/>
+
+            <!-- oyoq (poyabzal) -->
+            <ellipse cx="102" cy="202" rx="13" ry="9" fill="#5a3b8a"/>
+            <ellipse cx="138" cy="202" rx="13" ry="9" fill="#5a3b8a"/>
+
+            <!-- ko'ylak -->
+            <path d="M92 128 L148 128 L172 198 Q120 214 68 198 Z" fill="url(#rs2-dress)"/>
+            <path d="M94 156 Q120 166 146 156" stroke="rgba(255,255,255,.4)" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+            <!-- qo'llar -->
+            <rect x="80" y="138" width="24" height="48" rx="12" fill="url(#rs2-dress)"/>
+            <rect x="136" y="138" width="24" height="48" rx="12" fill="url(#rs2-dress)"/>
+
+            <!-- bo'yin -->
+            <rect x="112" y="110" width="16" height="18" rx="7" fill="#f3bfa0"/>
+
+            <!-- bosh -->
+            <circle cx="120" cy="90" r="30" fill="#facbac"/>
+            <path d="M90 88 q-2 -42 30 -44 q32 2 30 44 q-8 -20 -30 -18 q-22 -2 -30 18 z" fill="#6b4a2f"/>
+
+            <!-- bantik -->
+            <path d="M120 50 l-14 -8 v16 z" fill="var(--primary-2)"/>
+            <path d="M120 50 l14 -8 v16 z" fill="var(--primary-2)"/>
+            <circle cx="120" cy="50" r="4" fill="var(--primary-1)"/>
+
+            <!-- yuz -->
+            <g class="rs-eyes">
+              <circle cx="110" cy="94" r="3.2" fill="#3a2a22"/>
+              <circle cx="130" cy="94" r="3.2" fill="#3a2a22"/>
+            </g>
+            <path d="M112 104 q8 6 16 0" fill="none" stroke="#c76a52" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="104" cy="102" r="4" fill="#ff9bb0" opacity=".55"/>
+            <circle cx="136" cy="102" r="4" fill="#ff9bb0" opacity=".55"/>
+
+            <!-- ochiq kitob -->
+            <g class="rs-book">
+              <path d="M120 150 L82 160 Q80 176 84 186 L120 180 Z" fill="#fdf6e9" stroke="rgba(0,0,0,.12)" stroke-width="1.5"/>
+              <path d="M120 150 L158 160 Q160 176 156 186 L120 180 Z" fill="#fbf0dd" stroke="rgba(0,0,0,.12)" stroke-width="1.5"/>
+              <path d="M120 150 L120 180" stroke="url(#rs2-book)" stroke-width="3" stroke-linecap="round"/>
+              <path d="M92 166 l20 -4 M94 172 l18 -3" stroke="rgba(0,0,0,.18)" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M128 162 l20 4 M126 168 l20 4" stroke="rgba(0,0,0,.18)" stroke-width="1.6" stroke-linecap="round"/>
+              <path class="rs-flip" d="M120 150 L158 160 Q160 176 156 186 L120 180 Z" fill="#ffffff" opacity=".92"/>
+            </g>
+          </g>
+
+          <path class="rs-spark s1" d="M120 64 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z" fill="var(--accent)"/>
+          <path class="rs-spark s2" d="M90 78 l2.5 6 6 2.5 -6 2.5 -2.5 6 -2.5 -6 -6 -2.5 6 -2.5 z" fill="var(--primary-2)"/>
+          <circle class="rs-spark s3" cx="150" cy="76" r="4" fill="var(--primary-1)"/>
+        </svg>
+      </div>
+
+      <!-- Header / navigatsiya -->
+      <header class="site-header">
+        <a class="site-logo" href="#site-top">📚 MaktabTest<span>.uz</span></a>
+        <nav class="site-nav">
+          <a href="#sec-about">Haqida</a>
+          <a href="#sec-features">Qulayliklar</a>
+          <a href="#sec-panels">Kimlar uchun</a>
+          <a href="#sec-how">Qanday ishlaydi</a>
+          <a href="#sec-contact">Bog'lanish</a>
+        </nav>
+        <button type="button" class="btn btn-primary site-login-btn" data-open-login>🚀 Tizimga kirish</button>
+      </header>
+
+      <main class="site-main">
+        <!-- Hero -->
+        <section class="hero reveal" id="site-top">
+          <div class="hero-inner" id="sec-about">
+            <div class="brand-logo hero-logo">📚</div>
+            <h1 class="brand-title hero-title">MaktabTest<span>.uz</span></h1>
+            <p class="brand-sub hero-sub">Maktab uchun onlayn bilim sinovi tizimi</p>
+            <p class="hero-lead">Testlar, darslar, o'yinlar va reyting — barchasi bitta joyda. O'qituvchi test tuzadi, o'quvchi 6 xonali kod bilan kiradi, natijalar esa darhol tayyor bo'ladi.</p>
+            <div class="hero-cta">
+              <button type="button" class="btn btn-primary btn-lg" data-open-login>🚀 Tizimga kirish</button>
+              <a href="#sec-features" class="btn btn-ghost btn-lg">✨ Imkoniyatlar</a>
+            </div>
+          </div>
+          <div class="hero-stats">
+            <div class="hero-stat"><b>5</b><span>panel: o'quvchi, o'qituvchi, zavuch, boshqaruv, ota-ona</span></div>
+            <div class="hero-stat"><b>4</b><span>formatdan test yuklash: Excel, CSV, Word, PDF</span></div>
+            <div class="hero-stat"><b>6</b><span>xonali kod bilan testga oson kirish</span></div>
+          </div>
+        </section>
+
+        <!-- Qulayliklar -->
+        <section class="site-section reveal" id="sec-features">
+          <div class="section-inner">
+            <span class="section-tag">✨ Imkoniyatlar</span>
+            <h2 class="section-title">Saytning qulayliklari</h2>
+            <p class="section-lead">Bitta tizimda o'qituvchi, o'quvchi va ota-ona uchun kerakli hamma narsa.</p>
+            <div class="landing-grid">
+              <div class="landing-card"><div class="landing-ico">📝</div><h3>Onlayn testlar</h3><p>O'quvchi ro'yxatdan o'tmasdan — ism, familiya, sinf va 6 xonali kod bilan testga kiradi. Vaqt tugashi bilan test avtomatik yakunlanadi.</p></div>
+              <div class="landing-card"><div class="landing-ico">📄</div><h3>Fayldan test yuklash</h3><p>Tayyor savollarni Excel, CSV, Word yoki PDF fayldan bir necha soniyada yuklash mumkin — xohlasangiz qo'lda ham tuzasiz.</p></div>
+              <div class="landing-card"><div class="landing-ico">🟢</div><h3>Jonli kuzatuv</h3><p>O'qituvchi kim test yechayotganini real vaqtda ko'radi. Sahifadan chiqib ketish qayd etiladi — halollik nazoratda.</p></div>
+              <div class="landing-card"><div class="landing-ico">📚</div><h3>Bilim olish</h3><p>Video, audio va matnli darslar. Har bir o'rganilgan dars uchun o'quvchi coin ishlab oladi.</p></div>
+              <div class="landing-card"><div class="landing-ico">🎮</div><h3>O'yinlar</h3><p>Miyani charxlaydigan o'yinlar — o'ynab o'rganish va qo'shimcha coin yig'ish imkoniyati.</p></div>
+              <div class="landing-card"><div class="landing-ico">🏆</div><h3>Reyting va statistika</h3><p>Haftalik va oylik reyting, baholar statistikasi — har bir o'quvchining o'sishi ko'rinib turadi.</p></div>
+              <div class="landing-card"><div class="landing-ico">👪</div><h3>Ota-ona paneli</h3><p>Ota-ona farzandining natijalari, faolligi va reytingini alohida panel orqali kuzatib boradi.</p></div>
+              <div class="landing-card"><div class="landing-ico">📊</div><h3>Excel va PDF hisobotlar</h3><p>Natijalarni bir tugma bilan Excel (CSV) ga yuklab olish yoki PDF qilib chop etish mumkin.</p></div>
+              <div class="landing-card"><div class="landing-ico">🏫</div><h3>Ko'p maktab tizimi</h3><p>Boshqaruv bir nechta maktabni, zavuch o'z maktabini, o'qituvchi esa o'z sinflarini boshqaradi.</p></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Kimlar uchun (panellar) -->
+        <section class="site-section alt reveal" id="sec-panels">
+          <div class="section-inner">
+            <span class="section-tag">👥 Kimlar uchun</span>
+            <h2 class="section-title">Har kim uchun o'z paneli</h2>
+            <p class="section-lead">Beshta alohida panel — har biri o'z vazifasiga moslangan.</p>
+            <div class="panels-grid">
+              <div class="panel-card"><div class="panel-ico">🎓</div><h3>O'quvchi</h3><p>Kod bilan test yechadi, darslar o'rganadi, o'yin o'ynaydi va coin yig'adi.</p></div>
+              <div class="panel-card"><div class="panel-ico">🧑‍🏫</div><h3>O'qituvchi</h3><p>Test va darslar tuzadi, natijalarni ko'radi, o'quvchilarni boshqaradi.</p></div>
+              <div class="panel-card"><div class="panel-ico">🏫</div><h3>Zavuch</h3><p>Maktab admini — o'quvchilar, o'qituvchilar va bilim olish loginlarini boshqaradi.</p></div>
+              <div class="panel-card"><div class="panel-ico">👑</div><h3>Boshqaruv</h3><p>Bir nechta maktabni bir joydan nazorat qiladi va statistikani ko'radi.</p></div>
+              <div class="panel-card"><div class="panel-ico">👪</div><h3>Ota-ona</h3><p>Farzandining natijalari, faolligi va reytingini kuzatib boradi.</p></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Qanday ishlaydi -->
+        <section class="site-section reveal" id="sec-how">
+          <div class="section-inner">
+            <span class="section-tag">⚡ Oson boshlash</span>
+            <h2 class="section-title">Qanday ishlaydi</h2>
+            <p class="section-lead">To'rtta oddiy qadam — ro'yxatdan o'tishsiz, darhol.</p>
+            <div class="steps">
+              <div class="step-card"><span class="step-num">1</span><h3>O'qituvchi test tuzadi</h3><p>Qo'lda yoki Excel/Word/PDF fayldan savollarni yuklaydi va 6 xonali kod oladi.</p></div>
+              <div class="step-card"><span class="step-num">2</span><h3>O'quvchi kiradi</h3><p>Ism, familiya, sinf va kodni kiritib, bir zumda testga kirishadi.</p></div>
+              <div class="step-card"><span class="step-num">3</span><h3>Jonli kuzatuv</h3><p>O'qituvchi test jarayonini real vaqtda kuzatadi, halollik nazorat qilinadi.</p></div>
+              <div class="step-card"><span class="step-num">4</span><h3>Natija tayyor</h3><p>Baholar darhol chiqadi, Excel yoki PDF hisobot sifatida yuklab olinadi.</p></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- CTA -->
+        <section class="cta-band reveal">
+          <h2>Bilim sari birinchi qadam</h2>
+          <p>Hoziroq tizimga kiring va test yechishni yoki dars o'tishni boshlang.</p>
+          <button type="button" class="btn btn-lg cta-btn" data-open-login>🚀 Tizimga kirish</button>
+        </section>
+      </main>
+
+      <!-- Footer -->
+      <footer class="site-footer" id="sec-contact">
+        <div class="footer-inner">
+          <div class="footer-col footer-brand">
+            <div class="site-logo">📚 MaktabTest<span>.uz</span></div>
+            <p>Maktablar uchun onlayn test va bilim olish tizimi. O'quvchilar bilimini oson, halol va qiziqarli baholang.</p>
+          </div>
+          <div class="footer-col">
+            <h4>Bo'limlar</h4>
+            <a href="#sec-about">Haqida</a>
+            <a href="#sec-features">Qulayliklar</a>
+            <a href="#sec-panels">Kimlar uchun</a>
+            <a href="#sec-how">Qanday ishlaydi</a>
+          </div>
+          <div class="footer-col">
+            <h4>Imkoniyatlar</h4>
+            <a data-open-login>Test yechish</a>
+            <a data-open-login>Bilim olish</a>
+            <a data-open-login>O'qituvchi paneli</a>
+            <a data-open-login>Ota-ona paneli</a>
+          </div>
+          <div class="footer-col">
+            <h4>Bog'lanish</h4>
+            <span class="footer-contact">📧 info@maktabtest.uz</span>
+            <span class="footer-contact">🌐 maktabtest.uz</span>
+            <button type="button" class="btn btn-primary btn-sm" data-open-login style="margin-top:12px">Tizimga kirish →</button>
+          </div>
+        </div>
+        <div class="footer-bottom">© 2026 MaktabTest.uz — bilim sari birinchi qadam</div>
+      </footer>
+    </div>
+
+    <div class="login-wrap" id="login-area" style="display:none">
       <div class="login-card">
+        <button type="button" class="login-back" id="login-back">← Bosh sahifa</button>
         <div class="brand-logo">📚</div>
         <h1 class="brand-title">MaktabTest<span>.uz</span></h1>
         <p class="brand-sub">Maktab uchun onlayn bilim sinovi tizimi</p>
@@ -306,8 +571,9 @@
             <div class="field-row"><label>Sinf</label><select id="imp-class" class="inp"></select></div>
             <div class="field-row"><label>Vaqt (daqiqa)</label><input id="imp-duration" class="inp" type="number" min="1" value="20"></div>
           </div>
-          <div class="field-row"><label>Fayl (.xlsx .csv .docx .pdf)</label><input id="imp-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf"></div>
-          <button id="imp-btn" class="btn btn-secondary">📥 Fayldan yuklash</button>
+          <div class="field-row"><label>Fayl (.xlsx .csv .docx .pdf yoki 📷 rasm)</label><input id="imp-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf,image/*,.jpg,.jpeg,.png,.webp"></div>
+          <p class="muted" style="font-size:.82rem;margin-bottom:8px">💡 Fayl qanday tuzilgan bo'lsa ham (jadval yoki matn) tizim o'zi tushunadi. 📷 <b>Rasm</b> ham yuklasa bo'ladi — savollar rasmdan o'qib olinadi (to'g'ri javob rasmda belgilangan bo'lsin).</p>
+          <button id="imp-btn" class="btn btn-secondary">📥 Fayl/rasmdan yuklash</button>
           <div id="imp-progress" class="muted" style="margin-top:8px"></div>
         </div>
 
@@ -417,8 +683,8 @@
             <button id="ls-open-slots" class="btn btn-secondary btn-sm" type="button">📝 Savol joylarini ochish</button>
             <div id="ls-questions" class="questions-list" style="margin-top:14px"></div>
             <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--card-border)">
-              <p class="muted" style="margin-bottom:6px">📄 Yoki test savollarini fayldan yuklang (Excel/CSV/Word/PDF). <a href="#" id="ls-test-template" style="color:var(--primary-2);font-weight:700">📥 Namuna faylni yuklab oling</a></p>
-              <div class="field-row"><label>Fayl (.xlsx .csv .docx .pdf)</label><input id="ls-test-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf"></div>
+              <p class="muted" style="margin-bottom:6px">📄 Yoki test savollarini fayl (Excel/CSV/Word/PDF) yoki 📷 rasmdan yuklang — tizim o'zi o'qib tushunadi. <a href="#" id="ls-test-template" style="color:var(--primary-2);font-weight:700">📥 Namuna faylni yuklab oling</a></p>
+              <div class="field-row"><label>Fayl (.xlsx .csv .docx .pdf yoki 📷 rasm)</label><input id="ls-test-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf,image/*,.jpg,.jpeg,.png,.webp"></div>
             </div>
           </div>
           <button id="ls-save" class="btn btn-success">💾 Darsni saqlash</button>
@@ -663,6 +929,7 @@
   <script src="/static/js/ui.js"></script>
   <script src="/static/js/student.js"></script>
   <script src="/static/js/games.js"></script>
+  <script src="/static/js/gaze.js"></script>
   <script src="/static/js/learning.js"></script>
   <script src="/static/js/parent.js"></script>
   <script src="/static/js/teacher.js"></script>

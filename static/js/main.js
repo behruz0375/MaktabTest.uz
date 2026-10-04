@@ -40,6 +40,39 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   window.__getStaffRole = () => staffRole;
 
+  /* Bosh sahifa (landing) <-> Login oynasi almashtirish */
+  const siteLanding = document.getElementById("site-landing");
+  const loginArea = document.getElementById("login-area");
+  const showLoginArea = () => {
+    if (siteLanding) siteLanding.style.display = "none";
+    if (loginArea) loginArea.style.display = "flex";
+    window.scrollTo(0, 0);
+  };
+  const showLandingArea = () => {
+    if (loginArea) loginArea.style.display = "none";
+    if (siteLanding) siteLanding.style.display = "block";
+    window.scrollTo(0, 0);
+  };
+  document.querySelectorAll("[data-open-login]").forEach((b) => (b.onclick = showLoginArea));
+  const loginBack = document.getElementById("login-back");
+  if (loginBack) loginBack.onclick = showLandingArea;
+
+  /* Scroll bo'yicha paydo bo'lish animatsiyasi */
+  const reveals = document.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window && reveals.length) {
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((en) => {
+          if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
+        });
+      },
+      { threshold: 0.12 }
+    );
+    reveals.forEach((el) => io.observe(el));
+  } else {
+    reveals.forEach((el) => el.classList.add("in"));
+  }
+
   /* O'quvchi rejimi: Test yechish / Bilim olish */
   function setStudentMode(mode) {
     studentMode = mode;
@@ -91,10 +124,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!cls) { errEl.textContent = "Sinfingizni tanlang"; return; }
     const code = f.elements.code.value.trim();
     if (!code) { errEl.textContent = "Kirish kodini kiriting"; return; }
+    const payload = { first_name: first, last_name: last, class_name: cls, code };
     btn.disabled = true; btn.textContent = "Tekshirilmoqda...";
-    const res = await API.post("/api/student/start", { first_name: first, last_name: last, class_name: cls, code });
+    const res = await API.post("/api/student/start", payload);
     btn.disabled = false; btn.textContent = "Testga kirish →";
-    if (!res.ok) { errEl.textContent = res.error || "Xatolik yuz berdi"; return; }
+    if (!res.ok) {
+      // Ustoz hali "Start" bermagan bo'lsa — xato ko'rsatmaymiz, kutish xonasiga o'tkazamiz
+      if (res.waiting) {
+        f.reset();
+        Student.enterWaitingRoom(payload);
+        return;
+      }
+      errEl.textContent = res.error || "Xatolik yuz berdi";
+      return;
+    }
     f.reset();
     Student.start(res);
   });

@@ -1251,7 +1251,14 @@ def student_start():
             "SELECT * FROM tests WHERE code = ? AND is_active = 1", (code,)
         ).fetchone()
         if not test:
-            return jsonify({"ok": False, "error": "Kod noto'g'ri yoki test yopilgan"}), 400
+            pending = conn.execute(
+                "SELECT * FROM tests WHERE code = ? AND is_active = 0 ORDER BY created_at DESC, id DESC LIMIT 1",
+                (code,),
+            ).fetchone()
+            if pending:
+                return jsonify({"ok": False, "waiting": True,
+                                "error": "Ustoz testni hali boshlamadi. Iltimos, kuting..."}), 400
+            return jsonify({"ok": False, "error": "Kod noto'g'ri"}), 400
         if test["class_name"] != class_name:
             return jsonify({"ok": False, "error": f"Bu kod {test['class_name']} sinf uchun. Sinfingizni tekshiring"}), 400
 

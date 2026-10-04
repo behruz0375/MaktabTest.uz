@@ -14,6 +14,79 @@ const Student = {
     document.getElementById("btn-finish-2").onclick = () => this.finish(false);
   },
 
+  /* ---------- Kutish xonasi: ustoz "Start" bermaguncha ---------- */
+  enterWaitingRoom(payload) {
+    this._waitPayload = payload;
+    this._waitTries = 0;
+    this.renderWaitingModal();
+    this._waitInterval = setInterval(() => this.pollWaitingRoom(), 3000);
+  },
+
+  renderWaitingModal() {
+    UI.modal(`
+      <style>
+        @keyframes wait-spin { to { transform: rotate(360deg); } }
+        .wait-spinner {
+          width: 46px; height: 46px; margin: 20px auto;
+          border: 4px solid rgba(124,58,237,.15);
+          border-top-color: #7c3aed;
+          border-radius: 50%;
+          animation: wait-spin 1s linear infinite;
+        }
+      </style>
+      <span class="modal-icon">⏳</span>
+      <h2 style="text-align:center">Iltimos, o'qituvchingiz testga start berishini kuting</h2>
+      <p style="text-align:center">Siz testga kirdingiz. Ustozingiz <b>"Start berish"</b>ni bosishi bilan test avtomatik boshlanadi — hech narsa qilish shart emas.</p>
+      <div class="wait-spinner"></div>
+      <p class="muted" id="wait-status" style="text-align:center;font-size:.85rem">Tekshirilmoqda...</p>
+      <div style="text-align:center;margin-top:10px">
+        <button class="btn btn-ghost" id="wait-cancel">Bekor qilish</button>
+      </div>
+    `, { closable: false });
+    const cancelBtn = document.getElementById("wait-cancel");
+    if (cancelBtn) cancelBtn.onclick = () => this.cancelWaitingRoom();
+  },
+
+  async pollWaitingRoom() {
+    if (!this._waitPayload) return;
+    this._waitTries++;
+    const res = await API.post("/api/student/start", this._waitPayload);
+    if (!this._waitPayload) return; // shu orada bekor qilingan bo'lishi mumkin
+    if (res.ok) {
+      this.stopWaitingPoll();
+      UI.closeModal();
+      this.start(res);
+      return;
+    }
+    if (res.waiting) {
+      const statusEl = document.getElementById("wait-status");
+      if (statusEl) statusEl.textContent = `Tekshirilmoqda... (${this._waitTries})`;
+      return;
+    }
+    // Kutish davomida boshqa (haqiqiy) xato yuz berdi — masalan kod bekor qilindi
+    this.stopWaitingPoll();
+    UI.modal(`
+      <span class="modal-icon">⚠️</span>
+      <h2 style="text-align:center;color:var(--danger-1)">Kirib bo'lmadi</h2>
+      <p style="text-align:center">${UI.esc(res.error || "Xatolik yuz berdi")}</p>
+      <div style="text-align:center;margin-top:18px">
+        <button class="btn btn-primary" id="wait-err-ok">Tushunarli</button>
+      </div>
+    `, { closable: false });
+    const okBtn = document.getElementById("wait-err-ok");
+    if (okBtn) okBtn.onclick = () => UI.closeModal();
+  },
+
+  cancelWaitingRoom() {
+    this.stopWaitingPoll();
+    UI.closeModal();
+  },
+
+  stopWaitingPoll() {
+    if (this._waitInterval) { clearInterval(this._waitInterval); this._waitInterval = null; }
+    this._waitPayload = null;
+  },
+
   /* Testni boshlash (server javobidan) */
   start(payload) {
     const t = payload.test;

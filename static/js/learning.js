@@ -135,13 +135,28 @@ const Learning = {
     if (!res || !res.ok) { box.innerHTML = '<p class="muted">Reytingni yuklab bo\'lmadi.</p>'; return; }
     const mine = (res.school_ranking || []).find((r) => r.id === s.id);
     const myClass = (res.class_ranking || []).find((r) => r.id === s.id);
+    const clsPos = myClass ? myClass.rank : null;
+    const clsTot = (res.class_ranking || []).length;
+    // Keyingi o'rinв kimdan necha coin orqadaligimizni hisoblaymiz
+    let nextMsg = "";
+    if (myClass && clsPos > 1) {
+      const ahead = (res.class_ranking || []).find((r) => r.rank === clsPos - 1);
+      if (ahead) { const diff = Math.max(0, (ahead.coins || 0) - (s.coins || 0) + 1); nextMsg = `${clsPos - 1}-o'ringa chiqish uchun yana <b>${diff} coin</b> kerak.`; }
+    } else if (myClass && clsPos === 1) { nextMsg = "Siz sinfingizda <b>1-o'rindasiz</b> — zo'r! 🎉"; }
     box.innerHTML = `
-      <div class="stat-tiles">
-        <div class="stat-tile"><div class="num">🏅 ${myClass ? myClass.rank + "/" + res.class_ranking.length : "—"}</div><div class="lbl">Sinfingizdagi o'rningiz</div></div>
-        <div class="stat-tile"><div class="num">🌍 ${mine ? mine.rank + "/" + res.school_ranking.length : "—"}</div><div class="lbl">Maktabdagi o'rningiz</div></div>
-        <div class="stat-tile"><div class="num">🪙 ${s.coins || 0}</div><div class="lbl">Coinlaringiz</div></div>
+      <div class="rank-hero">
+        <div class="rh-place">${clsPos ? clsPos : "—"}</div>
+        <div class="rh-text">
+          <div class="rh-big">Siz sinfingizda <b>${clsPos ? clsPos + "-o'rindasiz" : "— "}</b>${clsTot ? ` <span class="muted">(${clsTot} o'quvchidan)</span>` : ""}</div>
+          <div class="rh-sub">🪙 <b>${s.coins || 0}</b> coin yig'gansiz${mine ? ` • 🌍 maktabda ${mine.rank}-o'rin` : ""}</div>
+          ${nextMsg ? `<div class="rh-next">⬆️ ${nextMsg}</div>` : ""}
+        </div>
       </div>
-      <p class="muted" style="margin-bottom:16px">Reyting coinlar bo'yicha tuziladi. Dars ko'ring, o'qing va o'yin o'ynang — coiningiz oshadi va yuqoriga ko'tarilasiz!</p>
+      <div class="rank-help">
+        <b>Reyting qanday tuziladi?</b> O'rin <b>coin</b> bo'yicha beriladi — kim ko'p coin yig'sa, shuncha yuqorida.
+        Coin yig'ish: 🎬 video ko'rish, 🎧 audio tinglash, 📖 matn o'qish va 🎮 o'yin o'ynash.
+        Eng yaxshi 3 talik: 🥇 1-o'rin, 🥈 2-o'rin, 🥉 3-o'rin.
+      </div>
       ${this._rankBlock(`🏅 ${UI.esc(res.class_name || "")} sinf reytingi`, res.class_ranking || [], s.id)}
       ${this._rankBlock("🌍 Maktabdagi barcha o'quvchilar reytingi", res.school_ranking || [], s.id, 30)}`;
   },
@@ -286,15 +301,19 @@ const Learning = {
 
   /* ===== KO'RILGAN VAQTNI HISOBLASH (video/audio) ===== */
   _fmtClock(s) { s = Math.max(0, Math.round(s || 0)); const m = Math.floor(s / 60), ss = s % 60; return m + ":" + String(ss).padStart(2, "0"); },
-  _startWatch(lessonId) {
+  _startWatch(lessonId, requireGaze) {
     this._watchLesson = lessonId;
     this._watchUnflushed = 0;   // serverga hali yuborilmagan soniyalar
     this._watchTotal = 0;       // shu sessiyada ko'rilgan jami soniya (ekranda)
     this._watchPlaying = false; // hozir o'ynayaptimi
+    this._gazeRequired = !!requireGaze; // video uchun kamera majburiy
+    this._gazeOk = false;       // kamera yoqilgan VA ekranga qarab turibdimi
     this._stopWatchTimer();
-    // Har soniya: agar o'ynayotgan bo'lsa vaqtni sanaymiz; to'xtasa — sanamaymiz
+    // Har soniya: o'ynayotgan bo'lsa VA (video bo'lsa) kamera yoqilib ekranga
+    // qarab turgan bo'lsagina vaqtni sanaymiz. Aks holda — YOZILMAYDI.
     this._watchTimer = setInterval(() => {
       if (!this._watchPlaying) return;
+      if (this._gazeRequired && !this._gazeOk) return;
       this._watchUnflushed++;
       this._watchTotal++;
       const c = document.getElementById("watch-clock");
@@ -316,44 +335,91 @@ const Learning = {
   openMedia(l) {
     const isVideo = l.type === "video";
     const tag = isVideo ? "video" : "audio";
+    const mb = l.file_size_mb ? l.file_size_mb + " MB" : "";
     UI.modal(`
-      <h2 style="text-align:center">${isVideo ? "🎬" : "🎧"} ${UI.esc(l.title)}</h2>
-      <div class="player-wrap">
-        <div class="player-media-box" id="media-box">
+      <div class="vplayer">
+        <div class="ytp player-media-box${isVideo ? "" : " ytp-audio"}" id="media-box">
           <${tag} id="lesson-media" playsinline preload="none"></${tag}>
           <div class="spinner" id="media-spinner"></div>
+
+          <!-- Yuqori qator: sarlavha + hajm -->
+          <div class="ytp-top">
+            <span class="ytp-title">${isVideo ? "🎬" : "🎧"} ${UI.esc(l.title)}</span>
+            ${mb ? `<span class="ytp-size" title="Fayl hajmi">💾 ${mb}</span>` : ""}
+          </div>
+
+          ${isVideo ? `
+          <div class="gaze-cam" id="gaze-cam" hidden>
+            <video id="gaze-video" muted playsinline></video>
+            <span class="gaze-dot" id="gaze-dot" title="Kamera nazorati"></span>
+          </div>` : ""}
+
+          <!-- Markazdagi katta tugma -->
+          <button class="ytp-bigplay" id="ytp-bigplay" type="button" aria-label="O'ynatish">▶</button>
+
+          <!-- Yuklash qoplamasi (birinchi marta) -->
           <button class="media-load-btn" id="media-load" type="button">
             <span class="mlb-icon">${isVideo ? "▶" : "🎧"}</span>
             <span class="mlb-text">${isVideo ? "Videoni yuklab ko'rish" : "Audioni yuklab tinglash"}</span>
-            <span class="mlb-sub">${l.file_size_mb ? l.file_size_mb + " MB" : "Bosing"}</span>
+            <span class="mlb-sub">${mb || "Bosing"}</span>
           </button>
-        </div>
-        <div class="player-bar"><div class="player-fill" id="player-fill"></div></div>
-        <div class="player-controls">
-          <button class="btn btn-secondary btn-sm" id="pl-play" disabled>▶️ Boshlash</button>
-          <button class="btn rewind-btn btn-sm" id="pl-rewind">⏪ 10s orqaga</button>
-          <span class="player-note" id="pl-time">0%</span>
-          <span class="watch-clock" id="watch-clock">⏱ 0:00</span>
-        </div>
-        <p class="player-note">⚠️ Darsni oldinga o'tkazib yoki tezlashtirib bo'lmaydi. To'xtatsangiz vaqt ham to'xtaydi.</p>
-        <div id="pl-done-area"></div>
-      </div>`, { large: true, onClose: () => { this._flushWatch(); this._stopWatchTimer(); this.stopMedia(); this.refreshLearning(); } });
 
-    this._startWatch(l.id);
+          <!-- Pastki boshqaruv (video ustida) -->
+          <div class="ytp-bottom">
+            <div class="ytp-progress"><div class="player-fill" id="player-fill"></div></div>
+            <div class="ytp-controls">
+              <button class="ytp-btn" id="pl-play" disabled title="O'ynatish / to'xtatish">▶</button>
+              <button class="ytp-btn ytp-rew" id="pl-rewind" title="10 soniya orqaga">↺<b>10</b></button>
+              <span class="ytp-time" id="pl-time">0:00 / 0:00</span>
+              <span class="ytp-flex"></span>
+              <span class="watch-clock" id="watch-clock" title="Yozilgan vaqt">⏱ 0:00</span>
+              ${isVideo ? `<button class="ytp-btn" id="pl-fs" title="To'liq ekran">⛶</button>` : ""}
+            </div>
+          </div>
+        </div>
+
+        ${isVideo ? `<div class="gaze-ctl" id="gaze-ctl">
+          <button class="btn btn-secondary btn-sm" id="gaze-enable" type="button">📷 Kamerani yoqish</button>
+          <span class="gaze-ctl-msg" id="gaze-ctl-msg">Dars vaqti yozilishi uchun kamerani yoqing — kamerasiz vaqt sanalmaydi.</span>
+        </div>` : ""}
+        <p class="player-note" id="gaze-note">⚠️ Darsni oldinga o'tkazib bo'lmaydi. To'xtatsangiz${isVideo ? " yoki ekrandan ko'z uzsangiz" : ""} vaqt yozilmaydi.</p>
+        ${isVideo ? `<div class="gaze-warn" id="gaze-warn" hidden>👀 Ekranga qarang — video darslik vaqti yozilmayapti</div>` : ""}
+        <div id="pl-done-area"></div>
+      </div>`, { large: true, onClose: () => { try { Gaze.stop(); } catch (e) {} const mbx = document.getElementById("modal-box"); if (mbx) mbx.classList.remove("modal-video"); this._flushWatch(); this._stopWatchTimer(); this.stopMedia(); this.refreshLearning(); } });
+
+    const modalBox = document.getElementById("modal-box");
+    if (modalBox) modalBox.classList.add("modal-video");   // video player kengroq ko'rinsin
+    this._startWatch(l.id, isVideo);
+    this._gazeActive = false;
+    this._gazeStarting = false;
     const media = document.getElementById("lesson-media");
     const spin = document.getElementById("media-spinner");
     const loadBtn = document.getElementById("media-load");
     const playBtn = document.getElementById("pl-play");
+    const bigPlay = document.getElementById("ytp-bigplay");
+    const box = document.getElementById("media-box");
     const showSpin = () => spin && spin.classList.add("on");
     const hideSpin = () => spin && spin.classList.remove("on");
 
+    // YouTube uslubi: o'ynaganda boshqaruvlar avtomatik yashirinadi, sichqoncha tegsa chiqadi
+    let ctlTimer = null;
+    const scheduleHide = () => { if (ctlTimer) clearTimeout(ctlTimer); if (box.classList.contains("playing")) ctlTimer = setTimeout(() => box.classList.add("ytp-idle"), 2800); };
+    const wakeControls = () => { box.classList.remove("ytp-idle"); scheduleHide(); };
+    box.addEventListener("mousemove", wakeControls);
+    box.addEventListener("mouseleave", () => { if (box.classList.contains("playing")) box.classList.add("ytp-idle"); });
+
     // Vaqt hisoblash o'ynash/to'xtash hodisalariga bog'liq (ishonchli)
-    media.addEventListener("playing", () => { this._watchPlaying = true; hideSpin(); playBtn.textContent = "⏸️ To'xtatish"; });
-    media.addEventListener("play", () => { playBtn.textContent = "⏸️ To'xtatish"; });
-    media.addEventListener("pause", () => { this._watchPlaying = false; hideSpin(); this._flushWatch(); playBtn.textContent = "▶️ Davom etish"; });
+    const setPlaying = (on) => {
+      box.classList.toggle("playing", on);
+      playBtn.textContent = on ? "⏸" : "▶";
+      if (on) scheduleHide(); else box.classList.remove("ytp-idle");
+    };
+    media.addEventListener("playing", () => { this._watchPlaying = true; hideSpin(); setPlaying(true); });
+    media.addEventListener("play", () => setPlaying(true));
+    media.addEventListener("pause", () => { this._watchPlaying = false; hideSpin(); this._flushWatch(); setPlaying(false); });
     media.addEventListener("waiting", () => { this._watchPlaying = false; showSpin(); });
     media.addEventListener("stalled", showSpin);
-    media.addEventListener("ended", () => { this._watchPlaying = false; hideSpin(); this.showComplete(l); });
+    media.addEventListener("ended", () => { this._watchPlaying = false; hideSpin(); setPlaying(false); try { Gaze.stop(); } catch (e) {} this.showComplete(l); });
     media.addEventListener("error", () => { hideSpin(); if (media.src) UI.toast("Faylni yuklashda xatolik", "err"); });
 
     media.controls = false;
@@ -364,29 +430,83 @@ const Learning = {
       if (media.currentTime > maxWatched) maxWatched = media.currentTime;
       const pct = media.duration ? Math.min(100, (maxWatched / media.duration) * 100) : 0;
       const f = document.getElementById("player-fill"); if (f) f.style.width = pct + "%";
-      const t = document.getElementById("pl-time"); if (t) t.textContent = Math.floor(pct) + "%";
+      const t = document.getElementById("pl-time");
+      if (t) t.textContent = `${this._fmtClock(media.currentTime)} / ${this._fmtClock(media.duration || 0)}`;
     });
     media.addEventListener("seeking", () => {
       if (media.currentTime > maxWatched + 1.0) media.currentTime = maxWatched;
     });
     media.oncontextmenu = (e) => e.preventDefault();
 
-    // Telegram uslubi: faqat bosilganda yuklanadi va o'ynaydi
+    // ===== Kamera nazorati (faqat video) =====
+    // Kamera yoqilmaguncha va ekranga qaralmaguncha dars vaqti YOZILMAYDI (_gazeOk=false).
+    const enableCamera = () => {
+      if (!isVideo || this._gazeActive || this._gazeStarting) return;
+      this._gazeStarting = true;
+      const cam = document.getElementById("gaze-cam");
+      const dot = document.getElementById("gaze-dot");
+      const warn = document.getElementById("gaze-warn");
+      const ctl = document.getElementById("gaze-ctl");
+      const ctlMsg = document.getElementById("gaze-ctl-msg");
+      const enableBtn = document.getElementById("gaze-enable");
+      if (cam) cam.hidden = false;
+      if (enableBtn) { enableBtn.disabled = true; enableBtn.textContent = "📷 Yoqilmoqda..."; }
+      if (ctlMsg) ctlMsg.textContent = "Kameraga ruxsat berish oynasini tasdiqlang...";
+      Gaze.start(document.getElementById("gaze-video"), {
+        // Har kadrda: qarab tursa vaqt sanaladi, qaramasa sanalmaydi (video to'xtamaydi)
+        onState: (looking) => { this._gazeOk = looking; if (dot) dot.classList.toggle("off", !looking); },
+        onAway: () => { this._flushWatch(); if (warn) warn.hidden = false; },  // pastda kichik ogohlantirish
+        onBack: () => { if (warn) warn.hidden = true; },
+        onFail: (msg) => {
+          this._gazeStarting = false; this._gazeActive = false; this._gazeOk = false;
+          if (cam) cam.hidden = true;
+          if (warn) warn.hidden = true;
+          if (ctl) ctl.hidden = false;
+          if (enableBtn) { enableBtn.disabled = false; enableBtn.textContent = "📷 Kamerani yoqish"; }
+          if (ctlMsg) ctlMsg.textContent = "⚠️ " + UI.esc(msg) + " Kamerasiz dars vaqti yozilmaydi.";
+        },
+      }).then((ok) => {
+        this._gazeStarting = false;
+        if (ok) { this._gazeActive = true; if (ctl) ctl.hidden = true; }  // kamera yoqildi — vaqt sanala boshlaydi
+      });
+    };
+    const enableBtn0 = document.getElementById("gaze-enable");
+    if (enableBtn0) enableBtn0.onclick = enableCamera;
+
+    // Faqat bosilganda yuklanadi va o'ynaydi
     const loadAndPlay = () => {
       if (loadBtn) loadBtn.style.display = "none";
       showSpin();
       if (!media.src) media.src = `/api/lessons/${l.id}/media`;
       playBtn.disabled = false;
-      media.play().catch(() => { hideSpin(); playBtn.textContent = "▶️ Boshlash"; });
+      enableCamera();   // video uchun kamerani ham yoqishga urinamiz (ruxsat so'raladi)
+      media.play().catch(() => { hideSpin(); setPlaying(false); });
     };
-    loadBtn.onclick = loadAndPlay;
-    playBtn.onclick = () => {
+    const togglePlay = () => {
       if (!media.src) { loadAndPlay(); return; }
       if (media.paused) media.play(); else media.pause();
     };
+    loadBtn.onclick = loadAndPlay;
+    playBtn.onclick = togglePlay;
+    bigPlay.onclick = togglePlay;
+    // YouTube'dagidek: video ustiga bosilsa o'ynaydi/to'xtaydi (tugmalar bundan mustasno)
+    box.addEventListener("click", (e) => {
+      if (e.target.closest(".ytp-btn, .media-load-btn, .ytp-bigplay, .gaze-cam, .ytp-top")) return;
+      togglePlay();
+    });
     document.getElementById("pl-rewind").onclick = () => {
       if (media.src) media.currentTime = Math.max(0, media.currentTime - 10);
     };
+    const toggleFs = () => {
+      if (!document.fullscreenElement) { (box.requestFullscreen || box.webkitRequestFullscreen || (() => {})).call(box); }
+      else { (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document); }
+    };
+    const fsBtn = document.getElementById("pl-fs");
+    if (fsBtn) fsBtn.onclick = toggleFs;
+    if (isVideo) box.addEventListener("dblclick", (e) => {   // YouTube'dagidek: ikki marta bosib to'liq ekran
+      if (e.target.closest(".ytp-btn, .media-load-btn, .gaze-cam")) return;
+      toggleFs();
+    });
   },
 
   openText(l) {

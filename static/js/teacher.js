@@ -117,6 +117,109 @@ const Teacher = {
     UI.toast("Namuna Excel fayli yuklandi. Oching, to'ldiring, keyin yuklang.", "ok", 5000);
   },
 
+  /* Rasm faylmi? */
+  _isImageFile(file) {
+    return /^image\//.test(file.type || "") || /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i.test(file.name || "");
+  },
+  /* Tesseract.js ni (rasm OCR) kerak bo'lganda CDN'dan yuklaymiz */
+  _loadTesseract() {
+    if (window.Tesseract) return Promise.resolve();
+    if (this._tessLoading) return this._tessLoading;
+    this._tessLoading = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+      s.onload = () => resolve();
+      s.onerror = () => { this._tessLoading = null; reject(new Error("OCR kutubxonasi yuklanmadi (internet?)")); };
+      document.head.appendChild(s);
+    });
+    return this._tessLoading;
+  },
+  /* OCR matnini normallashtiramiz: variant harflarini kiril->lotin,
+     "A)3" -> "A) 3" ko'rinishiga keltiramiz (parser yaxshi tushunishi uchun) */
+  _normalizeOcrText(text) {
+    const map = { "А": "A", "В": "B", "С": "C", "Ѕ": "S", "а": "A", "в": "B", "с": "C", "©": "C", "Е": "E", "е": "E", "О": "O", "о": "O" };
+    const toLat = (ch) => (map[ch] || ch).toUpperCase();
+    return String(text || "").split(/\r?\n/).map((line) => {
+      // 1) Variant qatori: <harf><belgi><matn> — harfni lotinga, bo'shliq qo'yamiz
+      let m = line.match(/^(\s*)([A-Da-dА-ЯЁа-яё©Ѕ])\s*([\).\-:\]])\s*(.+)$/);
+      if (m) {
+        const lat = toLat(m[2]);
+        if ("ABCD".indexOf(lat) !== -1) return m[1] + lat + ") " + m[4].trim();
+      }
+      // 2) Javob qatori: "...javob/to'g'ri... <harf>" — oxirgi harfni lotinga
+      m = line.match(/^(.*\b(?:javob|to'?g'?ri|to'?g'?risi|answer|correct|kalit|key)\b[^A-Za-zА-Яа-я]{0,12})([A-Da-dА-ЯЁа-яё©Ѕ])\s*[.\)]?\s*$/i);
+      if (m) {
+        const lat = toLat(m[2]);
+        if ("ABCD".indexOf(lat) !== -1) return m[1] + lat;
+      }
+      return line;
+    }).join("\n");
+  },
+
+  /* Rasmni OCR uchun tayyorlaymiz: kattalashtirish + kulrang + kontrast
+     (Tesseract kichik/past kontrastli rasmlarni yomon o'qiydi — shu yaxshilaydi) */
+  _preprocessImage(file) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        try {
+          let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+          if (!w || !h) { URL.revokeObjectURL(url); return resolve(file); }
+          // Kichik rasmni kattalashtiramiz (matn kattaroq = yaxshiroq o'qiladi), juda kattani cheklaymiz
+          const target = 2000;
+          let scale = target / w;
+          scale = Math.max(1, Math.min(scale, 3));      // 1x..3x oralig'ida
+          w = Math.round(w * scale); h = Math.round(h * scale);
+          if (w > 3000) { const k = 3000 / w; w = Math.round(w * k); h = Math.round(h * k); }
+          const c = document.createElement("canvas"); c.width = w; c.height = h;
+          const x = c.getContext("2d");
+          x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
+          x.fillStyle = "#fff"; x.fillRect(0, 0, w, h);
+          x.drawImage(img, 0, 0, w, h);
+          // Kulrang + kontrast kuchaytirish
+          try {
+            const id = x.getImageData(0, 0, w, h), dt = id.data;
+            for (let i = 0; i < dt.length; i += 4) {
+              let g = 0.299 * dt[i] + 0.587 * dt[i + 1] + 0.114 * dt[i + 2];
+              g = (g - 128) * 1.5 + 128;               // kontrast
+              g = g < 0 ? 0 : g > 255 ? 255 : g;
+              dt[i] = dt[i + 1] = dt[i + 2] = g;
+            }
+            x.putImageData(id, 0, 0);
+          } catch (e) { /* cross-origin bo'lsa o'tkazib yuboramiz */ }
+          URL.revokeObjectURL(url);
+          resolve(c);
+        } catch (e) { URL.revokeObjectURL(url); resolve(file); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  },
+
+  /* Rasmdan matn o'qiymiz (uzbek/rus/ingliz) */
+  async _ocrImage(file, prog) {
+    if (prog) prog.textContent = "⏳ OCR tayyorlanmoqda (birinchi marta biroz vaqt oladi)...";
+    await this._loadTesseract();
+    const input = await this._preprocessImage(file);   // rasmni yaxshilaymiz
+    if (prog) prog.textContent = "🔎 Rasmdan matn o'qilmoqda... 0%";
+    const run = (lng) => window.Tesseract.recognize(input, lng, {
+      logger: (m) => { if (prog && m.status === "recognizing text") prog.textContent = "🔎 Rasmdan matn o'qilmoqda... " + Math.round((m.progress || 0) * 100) + "%"; },
+    });
+    let res;
+    try { res = await run("uzb+rus+eng"); }
+    catch (e) { try { res = await run("eng"); } catch (e2) { res = await window.Tesseract.recognize(file, "eng"); } }
+    const raw = (res && res.data && res.data.text) || "";
+    return this._normalizeOcrText(raw);
+  },
+  /* Import uchun faylni tayyorlaymiz: rasm bo'lsa — OCR qilib .txt ga aylantiramiz */
+  async _prepareImportFile(file, prog) {
+    if (!this._isImageFile(file)) return file;
+    const text = await this._ocrImage(file, prog);
+    if (!text || !text.trim()) { UI.toast("Rasmdan matn o'qilmadi. Yorug'roq va aniqroq rasm yuklang.", "err", 6000); return null; }
+    return new File([text], "ocr.txt", { type: "text/plain" });
+  },
+
   importTest() {
     const title = document.getElementById("imp-title").value.trim();
     const subject = document.getElementById("imp-subject").value;
@@ -128,24 +231,28 @@ const Teacher = {
     if (!cls) return UI.toast("Sinfni tanlang", "err");
     if (!duration || duration < 1) return UI.toast("Vaqtni (daqiqa) belgilang", "err");
     if (!file) return UI.toast("Fayl tanlang", "err");
-    const fd = new FormData();
-    fd.append("title", title); fd.append("subject", subject); fd.append("class_name", cls);
-    fd.append("duration_minutes", duration); fd.append("file", file);
     const prog = document.getElementById("imp-progress");
-    prog.textContent = "⏳ Yuklanmoqda va o'qilmoqda...";
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/tests/import");
-    xhr.onload = () => {
-      let r = {}; try { r = JSON.parse(xhr.responseText); } catch (e) {}
-      if (xhr.status === 200 && r.ok) {
-        prog.textContent = "";
-        this.showSaveModal(r);
-        document.getElementById("imp-title").value = "";
-        document.getElementById("imp-file").value = "";
-      } else { prog.textContent = ""; UI.toast(r.error || "Import xatolik", "err", 6000); }
-    };
-    xhr.onerror = () => { prog.textContent = ""; UI.toast("Tarmoq xatosi", "err"); };
-    xhr.send(fd);
+    prog.textContent = "⏳ Fayl tayyorlanmoqda...";
+    this._prepareImportFile(file, prog).then((sendFile) => {
+      if (!sendFile) { prog.textContent = ""; return; }
+      const fd = new FormData();
+      fd.append("title", title); fd.append("subject", subject); fd.append("class_name", cls);
+      fd.append("duration_minutes", duration); fd.append("file", sendFile, sendFile.name || file.name);
+      prog.textContent = "⏳ Serverga yuborilmoqda...";
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/tests/import");
+      xhr.onload = () => {
+        let r = {}; try { r = JSON.parse(xhr.responseText); } catch (e) {}
+        if (xhr.status === 200 && r.ok) {
+          prog.textContent = "";
+          this.showSaveModal(r);
+          document.getElementById("imp-title").value = "";
+          document.getElementById("imp-file").value = "";
+        } else { prog.textContent = ""; UI.toast(r.error || "Import xatolik", "err", 6000); }
+      };
+      xhr.onerror = () => { prog.textContent = ""; UI.toast("Tarmoq xatosi", "err"); };
+      xhr.send(fd);
+    }).catch((e) => { prog.textContent = ""; UI.toast("OCR xatolik: " + (e.message || e), "err", 6000); });
   },
 
   toggleLessonType(type) {
@@ -705,7 +812,10 @@ const Teacher = {
       card.className = "test-card";
       card.dataset.class = t.class_name;
       card.innerHTML = `
-        <h3>${UI.esc(t.title)}</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <h3 style="margin:0">${UI.esc(t.title)}</h3>
+          <span class="lock-badge ${t.is_active ? "open" : "locked"}" title="${t.is_active ? "Test ochiq — o'quvchilar kira oladi" : "Test yopiq — o'qituvchi hali start bermagan"}">${t.is_active ? "🔓" : "🔒"}</span>
+        </div>
         <div class="chips">
           <span class="chip">${UI.esc(t.subject)}</span>
           <span class="chip">${UI.esc(t.class_name)}</span>
@@ -718,8 +828,9 @@ const Teacher = {
         <div class="card-actions">
           <button class="btn btn-secondary btn-sm" data-act="edit">✏️ Tahrirlash</button>
           <button class="btn btn-secondary btn-sm" data-act="code">🔄 Yangi kod</button>
-          <button class="btn btn-ghost btn-sm" data-act="toggle">${t.is_active ? "⏸️ Yopish" : "▶️ Ochish"}</button>
-          ${t.is_active ? '<button class="btn btn-danger btn-sm" data-act="stop">⏹️ To\'xtatish</button>' : ""}
+          ${t.is_active
+            ? '<button class="btn btn-danger btn-sm" data-act="stop">⏹️ To\'xtatish</button>'
+            : '<button class="btn btn-success btn-sm" data-act="start">▶️ Start berish</button>'}
           <button class="btn btn-secondary btn-sm" data-act="importqs">📄 Fayldan savol</button>
           <button class="btn btn-secondary btn-sm" data-act="addqs">➕ Savol qo'shish</button>
           <button class="btn btn-danger btn-sm" data-act="del">🗑️ O'chirish</button>
@@ -727,7 +838,8 @@ const Teacher = {
       `;
       card.querySelector('[data-act="edit"]').onclick = () => this.openTestEdit(t);
       card.querySelector('[data-act="code"]').onclick = () => this.regenCode(t.id);
-      card.querySelector('[data-act="toggle"]').onclick = () => this.toggleTest(t.id);
+      const startBtn = card.querySelector('[data-act="start"]');
+      if (startBtn) startBtn.onclick = () => this.startTest(t.id, t.title);
       const stopBtn = card.querySelector('[data-act="stop"]');
       if (stopBtn) stopBtn.onclick = () => this.stopTest(t.id, t.title);
       card.querySelector('[data-act="importqs"]').onclick = () => this.openImportQuestionsModal(t.id, t.title, t.question_count);
@@ -816,6 +928,11 @@ const Teacher = {
     if (res.ok) this.loadTests();
     else UI.toast(res.error || "Xatolik", "err");
   },
+  async startTest(id, title) {
+    const res = await API.post(`/api/tests/${id}/start`);
+    if (res.ok) { UI.toast(`✅ "${title}" boshlandi! O'quvchilar endi kira oladi.`, "ok", 4000); this.loadTests(); }
+    else UI.toast(res.error || "Xatolik", "err");
+  },
   stopTest(id, title) {
     this.confirm("Testni to'xtatish", `"${title}" testi to'xtatiladi. Hozir yechayotgan o'quvchilar tugatiladi (joriy javoblari saqlanadi) va yangi kirish yopiladi.`, async () => {
       const res = await API.post(`/api/tests/${id}/stop`);
@@ -838,10 +955,11 @@ const Teacher = {
       <h2 style="text-align:center">Fayldan savol qo'shish</h2>
       <p style="text-align:center" class="muted">"${UI.esc(testTitle)}" testiga. Hozir: <b>${currentCount}</b> ta savol</p>
       <p class="muted" style="text-align:center"><a href="#" id="iq-template" style="color:var(--primary-2);font-weight:700">📥 Namuna Excel faylni yuklab oling</a></p>
-      <div class="field-row" style="margin-top:10px"><label>Fayl (.xlsx .csv .docx .pdf)</label>
-        <input id="iq-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf"></div>
+      <div class="field-row" style="margin-top:10px"><label>Fayl (.xlsx .csv .docx .pdf yoki 📷 rasm)</label>
+        <input id="iq-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf,image/*,.jpg,.jpeg,.png,.webp"></div>
+      <p class="muted" style="font-size:.8rem">💡 Har qanday format yoki 📷 rasm — tizim o'zi o'qib tushunadi.</p>
       <div style="text-align:center;margin-top:10px">
-        <button class="btn btn-success" id="iq-save">📥 Fayldan qo'shish</button>
+        <button class="btn btn-success" id="iq-save">📥 Fayl/rasmdan qo'shish</button>
       </div>
       <div id="iq-progress" class="muted" style="text-align:center;margin-top:8px"></div>`);
     document.getElementById("iq-template").onclick = (e) => { e.preventDefault(); this.downloadTemplate(); };
@@ -849,20 +967,24 @@ const Teacher = {
       const file = document.getElementById("iq-file").files[0];
       if (!file) return UI.toast("Fayl tanlang", "err");
       const prog = document.getElementById("iq-progress");
-      prog.textContent = "⏳ Yuklanmoqda va o'qilmoqda...";
-      const fd = new FormData(); fd.append("file", file);
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `/api/tests/${testId}/import-questions`);
-      xhr.onload = () => {
-        let r = {}; try { r = JSON.parse(xhr.responseText); } catch (e) {}
-        if (xhr.status === 200 && r.ok) {
-          UI.closeModal();
-          UI.toast(`✅ ${r.added} ta savol qo'shildi! Jami: ${r.total} ta`, "ok", 5000);
-          this.loadTests();
-        } else { prog.textContent = ""; UI.toast(r.error || "Import xatolik", "err", 6000); }
-      };
-      xhr.onerror = () => { prog.textContent = ""; UI.toast("Tarmoq xatosi", "err"); };
-      xhr.send(fd);
+      prog.textContent = "⏳ Fayl tayyorlanmoqda...";
+      this._prepareImportFile(file, prog).then((sendFile) => {
+        if (!sendFile) { prog.textContent = ""; return; }
+        prog.textContent = "⏳ Serverga yuborilmoqda...";
+        const fd = new FormData(); fd.append("file", sendFile, sendFile.name || file.name);
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `/api/tests/${testId}/import-questions`);
+        xhr.onload = () => {
+          let r = {}; try { r = JSON.parse(xhr.responseText); } catch (e) {}
+          if (xhr.status === 200 && r.ok) {
+            UI.closeModal();
+            UI.toast(`✅ ${r.added} ta savol qo'shildi! Jami: ${r.total} ta`, "ok", 5000);
+            this.loadTests();
+          } else { prog.textContent = ""; UI.toast(r.error || "Import xatolik", "err", 6000); }
+        };
+        xhr.onerror = () => { prog.textContent = ""; UI.toast("Tarmoq xatosi", "err"); };
+        xhr.send(fd);
+      }).catch((e) => { prog.textContent = ""; UI.toast("OCR xatolik: " + (e.message || e), "err", 6000); });
     };
   },
 
@@ -1498,10 +1620,16 @@ const Teacher = {
       const dur = parseInt(document.getElementById("ls-test-dur").value, 10) || 10;
       const testFile = document.getElementById("ls-test-file").files[0];
       if (testFile) {
-        // Fayldan (Excel/CSV/Word/PDF) test yaratamiz — xuddi test importi kabi
+        // Fayldan yoki 📷 rasmdan test yaratamiz — xuddi test importi kabi (rasm bo'lsa OCR)
+        const prog0 = document.getElementById("ls-progress");
+        let sendFile;
+        try { sendFile = await this._prepareImportFile(testFile, prog0); }
+        catch (e) { if (prog0) prog0.textContent = ""; return UI.toast("OCR xatolik: " + (e.message || e), "err", 6000); }
+        if (!sendFile) { if (prog0) prog0.textContent = ""; return; }
         const tfd = new FormData();
         tfd.append("title", title + " — dars testi"); tfd.append("subject", subject);
-        tfd.append("class_name", cls); tfd.append("duration_minutes", dur); tfd.append("file", testFile);
+        tfd.append("class_name", cls); tfd.append("duration_minutes", dur);
+        tfd.append("file", sendFile, sendFile.name || testFile.name);
         let tj = {};
         try { const r = await fetch("/api/tests/import", { method: "POST", body: tfd }); tj = await r.json(); } catch (e) {}
         if (!tj.ok) return UI.toast("Fayldan test yaratishda xato: " + (tj.error || ""), "err");
