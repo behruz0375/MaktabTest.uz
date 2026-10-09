@@ -751,13 +751,15 @@ const Teacher = {
 
   syncFromDOM() {
     const slots = document.querySelectorAll("#ct-questions .q-slot");
-    this.questions = Array.from(slots).map((s) => ({
+    const prev = this.questions || [];
+    this.questions = Array.from(slots).map((s, i) => ({
       text: s.querySelector(".qs-text").value,
       a: s.querySelector(".qs-a").value,
       b: s.querySelector(".qs-b").value,
       c: s.querySelector(".qs-c").value,
       d: s.querySelector(".qs-d").value,
       correct: s.querySelector(".qs-correct").value,
+      image: prev[i] ? prev[i].image : null,
     }));
   },
 
@@ -771,6 +773,7 @@ const Teacher = {
   slotEl(q, i) {
     const el = document.createElement("div");
     el.className = "q-slot";
+    const hasImg = !!q.image;
     el.innerHTML = `
       <div class="q-slot-head">
         <div style="display:flex;align-items:center;gap:12px">
@@ -780,6 +783,10 @@ const Teacher = {
         <button class="q-del" title="Bu savolni o'chirish">🗑️</button>
       </div>
       <textarea class="qs-text" placeholder="Savol matnini yozing...">${UI.esc(q.text)}</textarea>
+      <div class="qs-img-row">
+        <div class="qs-img-prev" style="${hasImg ? '' : 'display:none'}"><img class="qs-img-thumb" src="${hasImg ? q.image : ''}" alt="rasm"><button class="qs-img-del" title="Rasmni olib tashlash">🗑️</button></div>
+        <label class="qs-img-add"><span>🖼️ Rasm qo'shish (ixtiyoriy)</span><input type="file" accept="image/*" class="qs-img-file" style="display:none"></label>
+      </div>
       <div class="opt-grid">
         <div class="opt-input"><span class="opt-tag">A</span><input class="qs-a" placeholder="A varianti" value="${UI.esc(q.a)}"></div>
         <div class="opt-input"><span class="opt-tag">B</span><input class="qs-b" placeholder="B varianti" value="${UI.esc(q.b)}"></div>
@@ -807,7 +814,54 @@ const Teacher = {
       }
       UI.toast("Savol o'chirildi, tartib yangilandi", "info", 1500);
     };
+    el.querySelector(".qs-img-file").onchange = (e) => this._attachQuestionImage(e, el, i, "questions");
+    el.querySelector(".qs-img-del").onclick = () => this._clearQuestionImage(el, i, "questions");
     return el;
+  },
+
+  /* Rasmni ~500KB gacha siqib (JPEG), data URL qilib savolga qo'shamiz */
+  async _attachQuestionImage(e, slotEl, idx, listName) {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await this._compressImage(file, 1200, 0.82, 500 * 1024);
+      this.syncFromDOM();
+      this[listName][idx].image = dataUrl;
+      const prev = slotEl.querySelector(".qs-img-prev");
+      prev.querySelector(".qs-img-thumb").src = dataUrl;
+      prev.style.display = "";
+    } catch (err) {
+      UI.toast("Rasmni yuklab bo'lmadi: " + (err.message || err), "err");
+    } finally {
+      e.target.value = "";
+    }
+  },
+  _clearQuestionImage(slotEl, idx, listName) {
+    this.syncFromDOM();
+    this[listName][idx].image = null;
+    slotEl.querySelector(".qs-img-prev").style.display = "none";
+  },
+  _compressImage(file, maxW, quality, maxBytes) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return reject(new Error("Noto'g'ri rasm"));
+        if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        let q = quality, dataUrl = c.toDataURL("image/jpeg", q);
+        while (dataUrl.length > maxBytes && q > 0.4) {
+          q -= 0.1; dataUrl = c.toDataURL("image/jpeg", q);
+        }
+        if (dataUrl.length > maxBytes) return reject(new Error("Rasm juda katta (500 KB dan oshdi)"));
+        resolve(dataUrl);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Rasmni o'qib bo'lmadi")); };
+      img.src = url;
+    });
   },
 
   updateSaveInfo() {
@@ -841,6 +895,7 @@ const Teacher = {
       title, subject, class_name, duration_minutes: duration,
       questions: this.questions.map((q) => ({
         text: q.text, option_a: q.a, option_b: q.b, option_c: q.c, option_d: q.d, correct_option: q.correct,
+        image: q.image || null,
       })),
     };
     const res = await API.post("/api/tests", payload);
@@ -908,12 +963,14 @@ const Teacher = {
         </div>
         <div class="code-big">${t.code}</div>
         <div class="muted" style="text-align:center">Topshirganlar: ${t.submission_count} ta</div>
+        ${t.schedule_start || t.schedule_end ? `<div class="chip schedule-chip">⏰ ${t.schedule_start ? "Boshlanadi: " + UI.esc(t.schedule_start) : ""}${t.schedule_start && t.schedule_end ? " • " : ""}${t.schedule_end ? "Yopiladi: " + UI.esc(t.schedule_end) : ""}</div>` : ""}
         <div class="card-actions">
           <button class="btn btn-secondary btn-sm" data-act="edit">✏️ Tahrirlash</button>
           <button class="btn btn-secondary btn-sm" data-act="code">🔄 Yangi kod</button>
           ${t.is_active
             ? '<button class="btn btn-danger btn-sm" data-act="stop">⏹️ To\'xtatish</button>'
             : '<button class="btn btn-success btn-sm" data-act="start">▶️ Start berish</button>'}
+          <button class="btn btn-secondary btn-sm" data-act="sched">⏰ Rejalashtirish</button>
           <button class="btn btn-secondary btn-sm" data-act="importqs">📄 Fayldan savol</button>
           <button class="btn btn-secondary btn-sm" data-act="addqs">➕ Savol qo'shish</button>
           <button class="btn btn-danger btn-sm" data-act="del">🗑️ O'chirish</button>
@@ -925,6 +982,7 @@ const Teacher = {
       if (startBtn) startBtn.onclick = () => this.startTest(t.id, t.title);
       const stopBtn = card.querySelector('[data-act="stop"]');
       if (stopBtn) stopBtn.onclick = () => this.stopTest(t.id, t.title);
+      card.querySelector('[data-act="sched"]').onclick = () => this.openScheduleModal(t);
       card.querySelector('[data-act="importqs"]').onclick = () => this.openImportQuestionsModal(t.id, t.title, t.question_count);
       card.querySelector('[data-act="addqs"]').onclick = () => this.openAddQuestionsModal(t.id, t.title, t.question_count);
       card.querySelector('[data-act="del"]').onclick = () => this.deleteTest(t.id, t.title);
@@ -998,6 +1056,39 @@ const Teacher = {
       UI.closeModal();
       UI.toast("Test yangilandi ✔", "ok");
       this.loadTests();
+    };
+  },
+
+  openScheduleModal(t) {
+    const toInput = (s) => s ? s.slice(0, 16).replace(" ", "T") : "";
+    UI.modal(`
+      <span class="modal-icon">⏰</span>
+      <h2 style="text-align:center">Testni rejalashtirish</h2>
+      <p class="muted" style="text-align:center">"${UI.esc(t.title)}" — belgilangan vaqtda avtomatik ochiladi va yopiladi. O'qituvchi "Start"ni bosishi shart emas.</p>
+      <div class="grid-4">
+        <div class="field-row"><label>▶️ Boshlanish (ochiladi)</label><input id="sch-start" class="inp" type="datetime-local" value="${toInput(t.schedule_start)}"></div>
+        <div class="field-row"><label>⏹️ Yopilish (o'z-o'zidan yakunlanadi)</label><input id="sch-end" class="inp" type="datetime-local" value="${toInput(t.schedule_end)}"></div>
+      </div>
+      <p class="muted" style="font-size:.8rem">💡 Faqat biri (boshlanish YOKI yopilish) ham bo'ladi. Ikkala maydonni bo'sh qoldirsangiz — rejalashtirish bekor qilinadi.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:12px">
+        <button class="btn btn-ghost" id="sch-cancel">Bekor qilish</button>
+        <button class="btn btn-danger btn-sm" id="sch-clear">🗑️ Rejani olib tashlash</button>
+        <button class="btn btn-success" id="sch-save">💾 Saqlash</button>
+      </div>
+    `, { large: true });
+    const close = () => UI.closeModal();
+    document.getElementById("sch-cancel").onclick = close;
+    document.getElementById("sch-clear").onclick = async () => {
+      const r = await API.post(`/api/tests/${t.id}/schedule`, { start: "", end: "" });
+      if (r.ok) { close(); UI.toast("Reja olib tashlandi ✔", "ok"); this.loadTests(); }
+      else UI.toast(r.error || "Xatolik", "err");
+    };
+    document.getElementById("sch-save").onclick = async () => {
+      const start = (document.getElementById("sch-start").value || "").replace("T", " ");
+      const end = (document.getElementById("sch-end").value || "").replace("T", " ");
+      const r = await API.post(`/api/tests/${t.id}/schedule`, { start, end });
+      if (r.ok) { close(); UI.toast("Rejalashtirildi ✔ — belgilangan vaqtda avto ochiladi/yopiladi", "ok", 5000); this.loadTests(); }
+      else UI.toast(r.error || "Xatolik", "err", 6000);
     };
   },
 
@@ -1331,7 +1422,10 @@ const Teacher = {
           <td>${sub.duration_minutes != null ? sub.duration_minutes + " daq" : "-"}</td>
           <td>${this.fmtDur(sub.duration_seconds)}</td>
           <td>${retakeTag}${status}</td>
-          <td><button class="btn btn-secondary btn-sm" data-retake="${sub.test_id}">🔁 Qayta</button></td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-ghost btn-sm" data-review="${sub.id}" title="O'quvchining javoblarini ko'rish">📝 Javoblar</button>
+            <button class="btn btn-secondary btn-sm" data-retake="${sub.test_id}">🔁 Qayta</button>
+          </td>
         </tr>`;
       }).join("");
       body = `<div style="overflow-x:auto"><table class="sub-table">
@@ -1347,6 +1441,44 @@ const Teacher = {
     document.querySelectorAll("[data-retake]").forEach((b) => {
       b.onclick = () => this.grantRetake(b.dataset.retake, s.id);
     });
+    document.querySelectorAll("[data-review]").forEach((b) => {
+      b.onclick = () => this.showSubmissionReview(b.dataset.review, s);
+    });
+  },
+
+  /* O'qituvchi uchun — bitta topshiriqning har savol bo'yicha javoblari */
+  async showSubmissionReview(subId, student) {
+    const res = await API.get(`/api/submissions/${subId}`);
+    if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+    const sub = res.submission || {};
+    const review = sub.review || [];
+    const name = student ? `${student.last_name} ${student.first_name}` : "";
+    if (!review.length) return UI.toast("Bu topshiriqda tahlil ma'lumoti yo'q", "warn");
+    const rows = review.map((q, i) => {
+      const opts = ["A", "B", "C", "D"].map((L) => {
+        const txt = q.options[L] || "";
+        const isCorrect = L === q.correct;
+        const isChosen = L === q.chosen;
+        let cls = "rv-opt";
+        if (isCorrect) cls += " rv-correct";
+        else if (isChosen) cls += " rv-wrong";
+        const tag = isCorrect ? " ✔" : (isChosen ? " ✘" : "");
+        return `<div class="${cls}"><b>${L})</b> ${UI.esc(txt)}${tag}</div>`;
+      }).join("");
+      return `<div class="rv-q ${q.is_correct ? "ok" : "bad"}">
+        <div class="rv-qhead"><span>${i + 1}. ${UI.esc(q.text)}</span><span class="rv-badge ${q.is_correct ? "ok" : "bad"}">${q.is_correct ? "To'g'ri" : "Xato"}</span></div>
+        ${q.image ? `<img src="${q.image}" class="rv-image" alt="savol rasmi">` : ""}
+        ${opts}
+        ${!q.chosen ? '<div class="rv-note">Javob bermagan</div>' : ""}
+      </div>`;
+    }).join("");
+    const correct = review.filter((q) => q.is_correct).length;
+    UI.modal(`
+      <h2 style="text-align:center">📝 ${UI.esc(name)} — javoblar</h2>
+      <p class="muted" style="text-align:center">${UI.esc(sub.test_title || "")} • ${correct}/${review.length} to'g'ri</p>
+      <p class="muted" style="text-align:center">🟢 Yashil — to'g'ri javob • 🔴 Qizil — o'quvchining xato javobi</p>
+      <div class="review-list">${rows}</div>
+    `, { large: true });
   },
 
   async grantRetake(testId, studentId) {

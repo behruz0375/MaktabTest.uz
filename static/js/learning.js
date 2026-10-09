@@ -177,6 +177,23 @@ const Learning = {
     const v = this.lessons.filter((l) => l.type === "video").length;
     const a = this.lessons.filter((l) => l.type === "audio").length;
     const t = this.lessons.filter((l) => l.type === "text").length;
+    // Yutuqlar + streak
+    let ach = {};
+    try { ach = await API.get("/api/achievements?student_id=" + s.id); } catch (e) {}
+    if (!ach || !ach.ok) ach = { achievements: [], streak_current: 0, streak_best: 0 };
+    const earned = (ach.achievements || []).filter((a) => a.earned);
+    const pending = (ach.achievements || []).filter((a) => !a.earned);
+    const achBlock = `
+      <h3 style="margin:14px 0 8px">🏅 Yutuqlar <span class="muted" style="font-size:.85rem;font-weight:600">(${earned.length}/${ach.achievements.length}) • 🔥 ${ach.streak_current} kun ketma-ket (eng ko'p: ${ach.streak_best})</span></h3>
+      <div class="ach-grid">
+        ${(ach.achievements || []).map((a) => `
+          <div class="ach-card ${a.earned ? "earned" : "locked"}">
+            <div class="ach-ico">${a.icon}</div>
+            <div class="ach-title">${UI.esc(a.title)}</div>
+            <div class="ach-coin">${a.earned ? "✓ olingan" : "🔒 hali olinmagan"} • +${a.coins} coin</div>
+          </div>`).join("")}
+      </div>`;
+
     const dailyRows = (this.daily || []).length
       ? (this.daily.map((d) => `<div class="daily-time-row${d.date === this._todayStr() ? " today" : ""}">
           <span class="d-date">${this._dateLabel(d.date)} <span class="muted" style="font-size:.8rem">${d.date}</span></span>
@@ -202,6 +219,7 @@ const Learning = {
         <p class="muted" style="margin:12px 0">📚 Sinfingizda ${totalLessons} ta dars: 🎬 ${v} video • 🎧 ${a} audio • 📖 ${t} matn. Shu oy: ⏱ ${this._fmtDurLong(this.monthSeconds)}.</p>
         ${UI.chart7(this.daily, { title: "📊 Haftalik faollik (oxirgi 7 kun)" })}
         ${UI.chartMonthly(ov.monthly, { title: "📈 Oylik o'zlashtirish (test natijalari)" })}
+        ${achBlock}
         <h3 style="margin:10px 0 8px">📆 Kunlik vaqtim</h3>
         <div class="daily-time-list">${dailyRows}</div>
       </div>`;

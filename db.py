@@ -234,9 +234,25 @@ def init_db():
         _ensure_column(conn, "submissions", "retaken", "INTEGER DEFAULT 0")
         # Savol/variant aralashtirish joylashuvi (har topshiriq uchun) — baholash va xatolar uchun
         _ensure_column(conn, "submissions", "layout_json", "TEXT")
+        # Savolga rasm (base64 data URL yoki fayl yo'li) — geometriya/formula uchun
+        _ensure_column(conn, "questions", "image", "TEXT")
         # Ota-ona Telegram chat_id (bildirishnoma uchun) + kutilayotgan ulanish kodi
         _ensure_column(conn, "students", "parent_tg_chat", "TEXT")
         _ensure_column(conn, "students", "parent_tg_code", "TEXT")
+        # Testni rejalashtirish: belgilangan vaqtda avto ochish/yopish (ISO formatida)
+        _ensure_column(conn, "tests", "schedule_start", "TEXT")
+        _ensure_column(conn, "tests", "schedule_end", "TEXT")
+        # Yutuqlar va kunlik streak
+        _ensure_column(conn, "students", "streak_current", "INTEGER DEFAULT 0")
+        _ensure_column(conn, "students", "streak_best", "INTEGER DEFAULT 0")
+        _ensure_column(conn, "students", "streak_last_date", "TEXT")
+        conn.execute("""CREATE TABLE IF NOT EXISTS achievements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            key TEXT NOT NULL,
+            awarded_at TEXT NOT NULL,
+            UNIQUE(student_id, key)
+        )""")
         # Standart hisob (egasi/owner) yaratamiz (agar hech kim bo'lmasa)
         cur = conn.execute("SELECT COUNT(*) AS c FROM teachers")
         if cur.fetchone()["c"] == 0:

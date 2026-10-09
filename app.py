@@ -432,6 +432,8 @@ def row_to_test(r, extra=None):
         "code": r["code"],
         "is_active": bool(r["is_active"]),
         "created_at": r["created_at"],
+        "schedule_start": r["schedule_start"] if "schedule_start" in r.keys() else None,
+        "schedule_end": r["schedule_end"] if "schedule_end" in r.keys() else None,
     }
     if extra:
         d.update(extra)
@@ -700,6 +702,7 @@ def get_test(test_id):
             "option_a": q["option_a"], "option_b": q["option_b"],
             "option_c": q["option_c"], "option_d": q["option_d"],
             "correct_option": q["correct_option"],
+            "image": q["image"] if "image" in q.keys() else None,
         } for q in qs]
         return jsonify({"ok": True, "test": row_to_test(r, {"questions": questions})})
     finally:
@@ -736,7 +739,14 @@ def _validate_test_payload(data):
             return None, f"{i}-savolning barcha variantlarini (A,B,C,D) to'ldiring"
         if correct not in ("A", "B", "C", "D"):
             return None, f"{i}-savol uchun to'g'ri javobni (A/B/C/D) tanlang"
-        clean.append({"text": text, "a": a, "b": b, "c": c, "d": d, "correct": correct})
+        # Rasm (ixtiyoriy, data:image/... base64) — hajmi cheklangan
+        img = (q.get("image") or "").strip() or None
+        if img:
+            if not img.startswith("data:image/"):
+                return None, f"{i}-savol rasmi noto'g'ri formatda"
+            if len(img) > 900_000:   # ~670 KB rasm (base64 chiqadigan hajm)
+                return None, f"{i}-savol rasmi juda katta (max ~500 KB)"
+        clean.append({"text": text, "a": a, "b": b, "c": c, "d": d, "correct": correct, "image": img})
     return {"title": title, "subject": subject, "class_name": class_name,
             "duration": duration, "questions": clean}, None
 
@@ -768,9 +778,9 @@ def create_test():
         test_id = cur.lastrowid
         for idx, q in enumerate(parsed["questions"], start=1):
             conn.execute(
-                "INSERT INTO questions (test_id, order_index, text, option_a, option_b, option_c, option_d, correct_option) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (test_id, idx, q["text"], q["a"], q["b"], q["c"], q["d"], q["correct"]),
+                "INSERT INTO questions (test_id, order_index, text, option_a, option_b, option_c, option_d, correct_option, image) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (test_id, idx, q["text"], q["a"], q["b"], q["c"], q["d"], q["correct"], q.get("image")),
             )
         conn.commit()
         return jsonify({"ok": True, "test_id": test_id, "code": code,
@@ -800,9 +810,9 @@ def update_test(test_id):
         conn.execute("DELETE FROM questions WHERE test_id = ?", (test_id,))
         for idx, q in enumerate(parsed["questions"], start=1):
             conn.execute(
-                "INSERT INTO questions (test_id, order_index, text, option_a, option_b, option_c, option_d, correct_option) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (test_id, idx, q["text"], q["a"], q["b"], q["c"], q["d"], q["correct"]),
+                "INSERT INTO questions (test_id, order_index, text, option_a, option_b, option_c, option_d, correct_option, image) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (test_id, idx, q["text"], q["a"], q["b"], q["c"], q["d"], q["correct"], q.get("image")),
             )
         conn.commit()
         return jsonify({"ok": True, "test_id": test_id, "code": r["code"]})
@@ -939,6 +949,47 @@ def stop_test(test_id):
                 answers = {}
             _grade_and_finish(conn, sub, answers, "completed")
         return jsonify({"ok": True, "stopped": len(active)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/tests/<int:test_id>/schedule", methods=["POST"])
+@teacher_required
+def set_test_schedule(test_id):
+    """Testni belgilangan vaqtda avto ochish/yopishga qo'yish.
+    JSON: {start: 'YYYY-MM-DD HH:MM', end: 'YYYY-MM-DD HH:MM'} — bo'sh = bekor qilish."""
+    data = request.get_json(force=True, silent=True) or {}
+    start = (data.get("start") or "").strip()
+    end = (data.get("end") or "").strip()
+    def _norm_dt(s):
+        if not s:
+            return None
+        s = s.replace("T", " ")
+        if len(s) == 16:
+            s = s + ":00"
+        try:
+            datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+            return s
+        except Exception:
+            return False
+    s_norm = _norm_dt(start)
+    e_norm = _norm_dt(end)
+    if s_norm is False or e_norm is False:
+        return jsonify({"ok": False, "error": "Vaqt formati noto'g'ri (YYYY-MM-DD HH:MM)"}), 400
+    if s_norm and e_norm and e_norm <= s_norm:
+        return jsonify({"ok": False, "error": "Yopilish vaqti boshlanishdan keyin bo'lsin"}), 400
+    conn = get_conn()
+    try:
+        t = conn.execute("SELECT * FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not t:
+            return jsonify({"ok": False, "error": "Test topilmadi"}), 404
+        sid = scope_school_id()
+        if sid is not None and t["school_id"] != sid:
+            return jsonify({"ok": False, "error": "Bu boshqa maktab testi"}), 403
+        conn.execute("UPDATE tests SET schedule_start = ?, schedule_end = ? WHERE id = ?",
+                     (s_norm, e_norm, test_id))
+        conn.commit()
+        return jsonify({"ok": True, "schedule_start": s_norm, "schedule_end": e_norm})
     finally:
         conn.close()
 
@@ -1297,23 +1348,15 @@ def submission_detail(sub_id):
         qs = conn.execute(
             "SELECT * FROM questions WHERE test_id = ? ORDER BY order_index", (sub["test_id"],)
         ).fetchall()
-        answers = json.loads(sub["answers_json"] or "{}")
-        details = []
-        for q in qs:
-            sel = answers.get(str(q["id"]))
-            details.append({
-                "text": q["text"],
-                "correct_option": q["correct_option"],
-                "selected": sel,
-                "is_correct": sel == q["correct_option"],
-            })
+        # To'liq review (variantlar matni, o'quvchi tanlagan va to'g'ri javob ko'rsatilgan tartibda)
+        review = _build_review(conn, sub)
         summary = _submission_summary(conn, sub)
         summary["student"] = {
             "first_name": s["first_name"] if s else "?",
             "last_name": s["last_name"] if s else "?",
             "class_name": s["class_name"] if s else "?",
         }
-        summary["details"] = details
+        summary["review"] = review
         return jsonify({"ok": True, "submission": summary})
     finally:
         conn.close()
@@ -1462,7 +1505,7 @@ def student_start():
             disp = {LET[i]: orig[perm[i]] for i in range(4)}   # ko'rsatiladigan harf -> matn
             layout_opts[str(q["id"])] = "".join(perm)          # pozitsiya i -> asl harf perm[i]
             questions.append({
-                "id": q["id"], "text": q["text"],
+                "id": q["id"], "text": q["text"], "image": q["image"] if "image" in q.keys() else None,
                 "option_a": disp["A"], "option_b": disp["B"],
                 "option_c": disp["C"], "option_d": disp["D"],
             })
@@ -1525,6 +1568,15 @@ def _grade_and_finish(conn, sub, answers, status, violation_reason=None):
     )
     # Test yechish uchun coin BERILMAYDI (coin faqat bilim olishда)
     coins = 0
+    # Yutuqlar va streak (test yakuni)
+    new_ach = []
+    try:
+        test_dur_min = conn.execute("SELECT duration_minutes FROM tests WHERE id=?", (sub["test_id"],)).fetchone()
+        test_dur = test_dur_min["duration_minutes"] if test_dur_min else 0
+        new_ach.extend(_check_test_achievements(conn, sub["student_id"], correct, total, duration, test_dur))
+        new_ach.extend(_bump_streak(conn, sub["student_id"]))
+    except Exception:
+        pass
     conn.commit()
     # Ota-onaga Telegram xabari (ulangan va bot sozlangan bo'lsa)
     try:
@@ -1544,9 +1596,11 @@ def _grade_and_finish(conn, sub, answers, status, violation_reason=None):
                 tg_send_async(st["parent_tg_chat"], msg)
     except Exception:
         pass
+    ach_payload = [{"key": k, "title": ACHIEVEMENTS[k][0], "icon": ACHIEVEMENTS[k][1], "coins": ACHIEVEMENTS[k][2]}
+                   for k in new_ach if k in ACHIEVEMENTS]
     return {"score": correct, "correct_count": correct, "wrong_count": wrong,
             "total": total, "percentage": round(percentage, 1), "duration_seconds": duration,
-            "coins": coins}
+            "coins": coins, "achievements": ach_payload}
 
 
 def _build_review(conn, sub):
@@ -1581,7 +1635,8 @@ def _build_review(conn, sub):
             correct_disp = q["correct_option"]
         chosen = answers.get(str(qid))
         out.append({
-            "text": q["text"], "options": disp, "chosen": chosen,
+            "text": q["text"], "image": (q["image"] if "image" in q.keys() else None),
+            "options": disp, "chosen": chosen,
             "correct": correct_disp, "is_correct": bool(chosen) and chosen == correct_disp,
         })
     return out
@@ -2043,10 +2098,20 @@ def learning_complete():
             )
         add_daily_time(conn, student_id, duration_seconds)
         conn.execute("UPDATE students SET coins = COALESCE(coins,0) + ? WHERE id = ?", (coins, student_id))
+        # Yutuqlar: dars yakuni + streak
+        new_ach = []
+        try:
+            new_ach.extend(_check_lesson_achievements(conn, student_id))
+            new_ach.extend(_bump_streak(conn, student_id))
+        except Exception:
+            pass
         conn.commit()
         total = conn.execute("SELECT coins FROM students WHERE id = ?", (student_id,)).fetchone()["coins"]
         total_dur = conn.execute("SELECT COALESCE(SUM(duration_seconds),0) AS d FROM learning_activity WHERE student_id = ?", (student_id,)).fetchone()["d"]
-        return jsonify({"ok": True, "already": False, "coins": coins, "total_coins": total, "total_duration_seconds": total_dur})
+        ach_payload = [{"key": k, "title": ACHIEVEMENTS[k][0], "icon": ACHIEVEMENTS[k][1], "coins": ACHIEVEMENTS[k][2]}
+                       for k in new_ach if k in ACHIEVEMENTS]
+        return jsonify({"ok": True, "already": False, "coins": coins, "total_coins": total,
+                        "total_duration_seconds": total_dur, "achievements": ach_payload})
     finally:
         conn.close()
 
@@ -3430,6 +3495,28 @@ def set_test_options_ep():
     return jsonify({"ok": True, "shuffle": bool(data.get("shuffle")), "review": bool(data.get("review"))})
 
 
+@app.route("/api/achievements", methods=["GET"])
+def student_achievements():
+    """O'quvchining olingan yutuqlari + umumiy streak."""
+    try:
+        student_id = int(request.args.get("student_id") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "student_id noto'g'ri"}), 400
+    conn = get_conn()
+    try:
+        s = conn.execute("SELECT streak_current, streak_best FROM students WHERE id=?", (student_id,)).fetchone()
+        got = {r["key"]: r["awarded_at"] for r in conn.execute(
+            "SELECT key, awarded_at FROM achievements WHERE student_id=?", (student_id,)).fetchall()}
+        items = []
+        for k, (title, icon, coins) in ACHIEVEMENTS.items():
+            items.append({"key": k, "title": title, "icon": icon, "coins": coins,
+                          "earned": k in got, "awarded_at": got.get(k)})
+        return jsonify({"ok": True, "streak_current": (s["streak_current"] if s else 0) or 0,
+                        "streak_best": (s["streak_best"] if s else 0) or 0, "achievements": items})
+    finally:
+        conn.close()
+
+
 @app.route("/api/settings/telegram", methods=["GET"])
 @teacher_required
 def get_telegram_ep():
@@ -3459,10 +3546,157 @@ def set_telegram_ep():
     return jsonify({"ok": True, "configured": bool(token), "bot_username": bot})
 
 
-# Telegram pollingни ishga tushiramiz (debug reloader'ning asosiy jarayonida yoki prod'da)
+# --------------------------------------------------------------------------
+# TEST REJALASHTIRISH — fonda har 30 soniyada tekshiradi va auto start/stop qiladi
+# --------------------------------------------------------------------------
+_sched_started = False
+_sched_lock = threading.Lock()
+
+
+def _scheduler_loop():
+    while True:
+        try:
+            now = now_iso()
+            conn = get_conn()
+            try:
+                # Start vaqti kelgan, hali yopiq testlarni ochamiz
+                conn.execute(
+                    "UPDATE tests SET is_active = 1 WHERE is_active = 0 AND schedule_start IS NOT NULL "
+                    "AND schedule_start <= ? AND (schedule_end IS NULL OR schedule_end > ?)",
+                    (now, now),
+                )
+                # Yopilish vaqti o'tgan, hali ochiq testlarni yopamiz
+                closed = conn.execute(
+                    "SELECT id FROM tests WHERE is_active = 1 AND schedule_end IS NOT NULL AND schedule_end <= ?",
+                    (now,),
+                ).fetchall()
+                for t in closed:
+                    conn.execute("UPDATE tests SET is_active = 0 WHERE id = ?", (t["id"],))
+                    # Hali yakunlanmagan topshiriqlarni yakunlaymiz
+                    subs = conn.execute(
+                        "SELECT * FROM submissions WHERE test_id = ? AND status = 'in_progress'",
+                        (t["id"],),
+                    ).fetchall()
+                    for sub in subs:
+                        try:
+                            answers = json.loads(sub["answers_json"] or "{}")
+                        except Exception:
+                            answers = {}
+                        _grade_and_finish(conn, sub, answers, "completed")
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+        time.sleep(30)
+
+
+# --------------------------------------------------------------------------
+# YUTUQLAR (achievements) va kunlik STREAK
+# --------------------------------------------------------------------------
+ACHIEVEMENTS = {
+    # key: (title, icon, bonus_coins)
+    "first_test":   ("Birinchi test", "🏁", 10),
+    "perfect":      ("100% — mukammal natija", "💯", 30),
+    "fast":         ("Chaqqon — vaqtдан yarmidan oldin tugatdi", "⚡", 15),
+    "test_10":      ("10 ta test topshirdi", "📝", 20),
+    "test_50":      ("50 ta test topshirdi", "🎯", 50),
+    "first_lesson": ("Birinchi dars tugatildi", "📚", 10),
+    "lesson_10":    ("10 ta dars tugatildi", "📖", 20),
+    "streak_3":     ("3 kun ketma-ket faollik", "🔥", 15),
+    "streak_7":     ("7 kun ketma-ket — bir hafta!", "🔥🔥", 40),
+    "streak_30":    ("30 kun ketma-ket — oy bo'yi!", "🏆", 150),
+}
+
+
+def _award(conn, student_id, key):
+    """Yutuqni belgilaydi va bonus coin beradi. Takrorlanmasligini kafolatlaydi."""
+    if not student_id or key not in ACHIEVEMENTS:
+        return None
+    try:
+        cur = conn.execute(
+            "INSERT INTO achievements (student_id, key, awarded_at) VALUES (?, ?, ?)",
+            (student_id, key, now_iso()),
+        )
+        if cur.rowcount:
+            bonus = ACHIEVEMENTS[key][2]
+            if bonus:
+                conn.execute("UPDATE students SET coins = COALESCE(coins,0) + ? WHERE id = ?", (bonus, student_id))
+            return key
+    except Exception:
+        pass
+    return None
+
+
+def _bump_streak(conn, student_id):
+    """Bugungi faollikni hisobga olib, streakni yangilaydi. Yangi yutuq kalitlarini qaytaradi."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    s = conn.execute("SELECT streak_current, streak_best, streak_last_date FROM students WHERE id = ?",
+                     (student_id,)).fetchone()
+    if not s:
+        return []
+    last = s["streak_last_date"]
+    if last == today:
+        return []  # bugun streak allaqachon hisoblangan
+    cur_streak = (s["streak_current"] or 0)
+    cur_streak = cur_streak + 1 if last == yesterday else 1
+    best = max(s["streak_best"] or 0, cur_streak)
+    conn.execute(
+        "UPDATE students SET streak_current=?, streak_best=?, streak_last_date=? WHERE id=?",
+        (cur_streak, best, today, student_id),
+    )
+    awarded = []
+    for n, k in ((3, "streak_3"), (7, "streak_7"), (30, "streak_30")):
+        if cur_streak >= n:
+            got = _award(conn, student_id, k)
+            if got:
+                awarded.append(got)
+    return awarded
+
+
+def _check_test_achievements(conn, student_id, correct, total, duration, test_duration_min):
+    awarded = []
+    cnt = conn.execute("SELECT COUNT(*) AS c FROM submissions WHERE student_id=? AND status!='in_progress'",
+                       (student_id,)).fetchone()["c"]
+    if cnt == 1:
+        awarded.append(_award(conn, student_id, "first_test"))
+    if cnt >= 10:
+        awarded.append(_award(conn, student_id, "test_10"))
+    if cnt >= 50:
+        awarded.append(_award(conn, student_id, "test_50"))
+    if total and correct == total:
+        awarded.append(_award(conn, student_id, "perfect"))
+    if test_duration_min and duration and duration <= (test_duration_min * 60 / 2):
+        awarded.append(_award(conn, student_id, "fast"))
+    return [a for a in awarded if a]
+
+
+def _check_lesson_achievements(conn, student_id):
+    awarded = []
+    cnt = conn.execute("SELECT COUNT(*) AS c FROM learning_activity WHERE student_id=? AND completed=1",
+                       (student_id,)).fetchone()["c"]
+    if cnt == 1:
+        awarded.append(_award(conn, student_id, "first_lesson"))
+    if cnt >= 10:
+        awarded.append(_award(conn, student_id, "lesson_10"))
+    return [a for a in awarded if a]
+
+
+def start_scheduler():
+    global _sched_started
+    with _sched_lock:
+        if _sched_started:
+            return
+        _sched_started = True
+        threading.Thread(target=_scheduler_loop, daemon=True).start()
+
+
+# Telegram polling va rejalashtiruvchini fonda ishga tushiramiz
 if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or os.environ.get("FLASK_DEBUG", "1") != "1":
     try:
         start_tg_polling()
+        start_scheduler()
     except Exception:
         pass
 

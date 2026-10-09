@@ -2,6 +2,17 @@
 document.addEventListener("DOMContentLoaded", async () => {
   UI.initTheme();
   UI.spawnBooks();
+  // Til tanlagich
+  if (window.I18N) {
+    I18N.init();
+    document.querySelectorAll("#lang-switch button").forEach((b) => {
+      b.onclick = () => {
+        I18N.apply(b.dataset.lang);
+        document.querySelectorAll("#lang-switch button").forEach((x) => x.classList.toggle("active", x === b));
+      };
+      if (b.dataset.lang === (I18N.current ? I18N.current() : "uz-lat")) b.classList.add("active");
+    });
+  }
   Student.bindControls();
   Learning.bind();
   Parent.bind();

@@ -131,6 +131,27 @@ body {
 }
 .theme-toggle:hover { transform: rotate(30deg) scale(1.12); box-shadow: 0 0 24px var(--glow); }
 
+/* Til tanlagich (theme tugmasining chapida) */
+.lang-switch {
+  position: fixed; top: 18px; right: 80px; z-index: 50;
+  display: flex; gap: 2px; padding: 3px;
+  background: var(--card); border: 1px solid var(--card-border);
+  border-radius: 999px; box-shadow: var(--shadow-soft); backdrop-filter: blur(10px);
+}
+.lang-switch button {
+  background: transparent; border: none; cursor: pointer; color: var(--muted);
+  font-weight: 800; font-size: .78rem; padding: 7px 10px; border-radius: 999px;
+  font-family: inherit; transition: var(--trans);
+}
+.lang-switch button:hover { color: var(--text); }
+.lang-switch button.active {
+  color: #fff; background: linear-gradient(135deg, var(--primary-1), var(--primary-2));
+}
+@media (max-width: 460px) {
+  .lang-switch { right: 70px; top: 14px; padding: 2px; }
+  .lang-switch button { font-size: .72rem; padding: 6px 8px; }
+}
+
 /* ---------- Ko'rinishlar (views) ---------- */
 .view { display: none; min-height: 100vh; animation: fadeIn .5s ease; }
 .view.active { display: block; }
@@ -1315,6 +1336,44 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 .rv-correct { background: rgba(35, 196, 131, .18); border-color: var(--success-1); color: var(--text); font-weight: 600; }
 .rv-wrong { background: rgba(255, 84, 112, .16); border-color: var(--danger-1); color: var(--text); text-decoration: line-through; }
 .rv-note { color: var(--danger-1); font-size: .82rem; font-weight: 700; margin-top: 4px; }
+.rv-image { display: block; max-width: 100%; max-height: 260px; margin: 8px 0 10px; border-radius: 10px; background: #fff; }
+.q-image { display: block; max-width: 100%; max-height: 300px; margin: 0 auto 12px; border-radius: 12px; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+
+/* Savolga rasm qo'shish — tahrir UI (test tuzish) */
+.qs-img-row { display: flex; align-items: center; gap: 10px; margin: 6px 0 10px; flex-wrap: wrap; }
+.qs-img-prev { position: relative; display: inline-flex; }
+.qs-img-thumb { height: 72px; max-width: 160px; border-radius: 8px; border: 1px solid var(--card-border); background: #fff; }
+.qs-img-del {
+  position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; border-radius: 50%;
+  border: none; cursor: pointer; background: var(--danger-1); color: #fff; font-size: .8rem; line-height: 24px;
+}
+.qs-img-add { cursor: pointer; color: var(--muted); font-size: .85rem; font-weight: 600; padding: 7px 12px;
+  background: var(--inp-bg); border: 1px dashed var(--inp-border); border-radius: 10px; transition: var(--trans); }
+.qs-img-add:hover { color: var(--primary-2); border-color: var(--primary-1); }
+
+/* Yutuqlar (achievements) grid */
+.ach-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 8px 0 14px; }
+.ach-card {
+  background: var(--card); border: 1px solid var(--card-border); border-radius: 14px;
+  padding: 12px; text-align: center; transition: var(--trans);
+}
+.ach-card.earned { background: linear-gradient(135deg, rgba(35,196,131,.18), rgba(18,184,255,.14));
+  border-color: var(--success-1); box-shadow: 0 4px 14px rgba(35,196,131,.2); }
+.ach-card.locked { opacity: .55; filter: grayscale(.5); }
+.ach-ico { font-size: 2rem; margin-bottom: 4px; }
+.ach-card.earned .ach-ico { animation: achPop 1.6s ease-in-out infinite; }
+@keyframes achPop { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+.ach-title { font-weight: 700; font-size: .88rem; margin-bottom: 4px; }
+.ach-coin { font-size: .74rem; color: var(--muted); }
+.ach-card.earned .ach-coin { color: var(--success-1); font-weight: 700; }
+
+/* Testni rejalashtirish chipi */
+.schedule-chip {
+  display: inline-block; margin: 6px 0 10px;
+  background: linear-gradient(135deg, #4e7dff, #7c5cff);
+  color: #fff; font-weight: 700; font-size: .78rem;
+  padding: 5px 12px; border-radius: 999px;
+}
 
 /* Kunlik vaqt taqsimoti (ota-ona / o'qituvchi) */
 .daily-time-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
