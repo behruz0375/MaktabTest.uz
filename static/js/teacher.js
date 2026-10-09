@@ -24,6 +24,8 @@ const Teacher = {
     // O'quvchilar
     document.getElementById("stu-class").onchange = (e) => this.loadStudents(e.target.value);
     document.getElementById("stu-add").onclick = () => this.addStudent();
+    const sbo = document.getElementById("stu-bulk-open");
+    if (sbo) sbo.onclick = () => this.openBulkImport();
     // Sozlamalar
     document.getElementById("set-save").onclick = () => this.saveCredentials();
     // Darslar (bilim olish)
@@ -1590,6 +1592,109 @@ const Teacher = {
     document.getElementById("stu-first").value = "";
     document.getElementById("stu-last").value = "";
     this.loadStudents(cls);
+  },
+
+  /* ===== CSV / matn qatorlaridan ko'p o'quvchi import ===== */
+  openBulkImport() {
+    const cls = document.getElementById("stu-class").value;
+    const classOpts = (State.meta.classes || []).map((c) => `<option value="${UI.esc(c)}" ${c === cls ? "selected" : ""}>${UI.esc(c)}</option>`).join("");
+    UI.modal(`
+      <span class="modal-icon">📥</span>
+      <h2 style="text-align:center">Ro'yxatdan o'quvchilarni import qilish</h2>
+      <p class="muted" style="text-align:center">Har qatorда bitta o'quvchi. Formatlar (hammasi ishlaydi):</p>
+      <ul class="muted" style="padding-left:22px;font-size:.86rem;line-height:1.6;margin-bottom:10px">
+        <li><b>Familiya Ism</b> — standart sinf ishlatiladi</li>
+        <li><b>Familiya,Ism,Sinf</b> — vergul bilan (Excel CSV ham)</li>
+        <li><b>Familiya;Ism;Sinf</b> — nuqta-vergul bilan</li>
+      </ul>
+      <div class="field-row"><label>📂 Standart sinf (qatorда ko'rsatilmagan o'quvchilar uchun)</label>
+        <select id="bulk-cls" class="inp"><option value="">— tanlang —</option>${classOpts}</select></div>
+      <div class="field-row"><label>Ro'yxat (Excel'dan nusxalab qo'ying yoki CSV faylni ochib yopishtiring)</label>
+        <textarea id="bulk-text" class="inp" rows="8" placeholder="Aliyev Bekzod&#10;Yusupova Aziza,,5-A&#10;Sobirov Diyor,,5-B"></textarea></div>
+      <input type="file" id="bulk-file" accept=".csv,.txt,.tsv" style="display:none">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px">
+        <button class="btn btn-ghost btn-sm" id="bulk-file-btn" type="button">📄 CSV fayldan yuklash</button>
+        <button class="btn btn-secondary btn-sm" id="bulk-preview" type="button">👁️ Oldindan ko'rish</button>
+      </div>
+      <div id="bulk-preview-area" style="margin-top:10px"></div>
+      <div style="display:flex;gap:12px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="bulk-cancel">Bekor qilish</button>
+        <button class="btn btn-success" id="bulk-save" disabled>➕ Qo'shish</button>
+      </div>
+    `, { large: true });
+    document.getElementById("bulk-cancel").onclick = () => UI.closeModal();
+    document.getElementById("bulk-file-btn").onclick = () => document.getElementById("bulk-file").click();
+    document.getElementById("bulk-file").onchange = (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      f.text().then((t) => { document.getElementById("bulk-text").value = t; this._bulkPreview(); });
+    };
+    document.getElementById("bulk-preview").onclick = () => this._bulkPreview();
+    document.getElementById("bulk-save").onclick = () => this._bulkSave();
+  },
+
+  _bulkParse() {
+    const txt = document.getElementById("bulk-text").value || "";
+    const defCls = document.getElementById("bulk-cls").value || "";
+    const items = []; const bad = [];
+    txt.split(/\r?\n/).forEach((raw, idx) => {
+      let line = (raw || "").trim();
+      if (!line || line.startsWith("#")) return;
+      // Separator aniqlash: ,  ;  tab  bo'sh joy
+      let parts;
+      if (line.includes(";")) parts = line.split(";");
+      else if (line.includes(",")) parts = line.split(",");
+      else if (line.includes("\t")) parts = line.split("\t");
+      else parts = line.split(/\s+/);
+      parts = parts.map((p) => (p || "").trim()).filter((p) => p !== "" || parts.length === 3);
+      if (parts.length < 2) { bad.push({ i: idx + 1, line, why: "ism yoki familiya topilmadi" }); return; }
+      let last, first, cls;
+      if (parts.length === 2) { last = parts[0]; first = parts[1]; cls = defCls; }
+      else { last = parts[0]; first = parts[1]; cls = parts[2] || defCls; }
+      items.push({ last_name: last, first_name: first, class_name: cls });
+    });
+    return { items, bad, defCls };
+  },
+
+  _bulkPreview() {
+    const { items, bad, defCls } = this._bulkParse();
+    const area = document.getElementById("bulk-preview-area");
+    const saveBtn = document.getElementById("bulk-save");
+    if (!items.length) {
+      area.innerHTML = '<p class="muted">Ro\'yxat bo\'sh yoki tushunarsiz. Formatni tekshiring.</p>';
+      saveBtn.disabled = true; return;
+    }
+    const missingCls = items.filter((x) => !x.class_name);
+    if (missingCls.length && !defCls) {
+      area.innerHTML = `<p class="muted" style="color:var(--danger-1)">⚠️ ${missingCls.length} ta qatorда sinf ko'rsatilmagan. Standart sinf tanlang yoki qatorda yozing.</p>`;
+      saveBtn.disabled = true; return;
+    }
+    const rows = items.slice(0, 30).map((x, i) => `<tr><td>${i + 1}</td><td>${UI.esc(x.last_name)}</td><td>${UI.esc(x.first_name)}</td><td>${UI.esc(x.class_name || "—")}</td></tr>`).join("");
+    area.innerHTML = `
+      <p class="muted" style="font-size:.86rem">Oldindan ko'rish — jami <b>${items.length}</b> ta${bad.length ? `, ${bad.length} ta tushunarsiz qator o'tkazib yuboriladi` : ""}:</p>
+      <div style="max-height:220px;overflow:auto"><table class="sub-table">
+        <thead><tr><th>#</th><th>Familiya</th><th>Ism</th><th>Sinf</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      ${items.length > 30 ? `<p class="muted" style="font-size:.8rem;text-align:center">+${items.length - 30} ta qolgan...</p>` : ""}`;
+    saveBtn.disabled = false;
+  },
+
+  async _bulkSave() {
+    const { items, defCls } = this._bulkParse();
+    if (!items.length) return;
+    const btn = document.getElementById("bulk-save");
+    btn.disabled = true; btn.textContent = "Yuklanmoqda...";
+    const res = await API.post("/api/students/bulk", { items, default_class: defCls });
+    btn.disabled = false; btn.textContent = "➕ Qo'shish";
+    if (!res.ok) return UI.toast(res.error || "Xatolik", "err");
+    let msg = `✅ ${res.added} ta o'quvchi qo'shildi`;
+    if (res.skipped) msg += `, ${res.skipped} ta takrorlangan — o'tkazildi`;
+    if (res.errors && res.errors.length) msg += `. ⚠️ ${res.errors.length} ta xato (konsolga qarang)`;
+    UI.toast(msg, "ok", 6000);
+    if (res.errors && res.errors.length) console.warn("Import xatolari:", res.errors);
+    UI.closeModal();
+    const curCls = document.getElementById("stu-class").value;
+    if (curCls) this.loadStudents(curCls);
   },
 
   deleteStudent(id, s, cls) {

@@ -24,6 +24,7 @@ const Learning = {
     this.student = payload.student;
     this.lessons = payload.lessons || [];
     this.completed = new Set(payload.completed || []);
+    this.bookmarks = payload.bookmarks || {};   // {lesson_id: "v:120.5" | "s:35"}
     document.getElementById("lr-student").textContent =
       `${payload.student.first_name} ${payload.student.last_name} • ${payload.student.class_name}${payload.school_name ? " • 🏫 " + payload.school_name : ""}`;
     document.getElementById("lr-coins").textContent = payload.student.coins || 0;
@@ -284,7 +285,18 @@ const Learning = {
     box.innerHTML = "";
     lessons.forEach((l) => {
       const card = document.createElement("div");
-      card.className = "lesson-card" + (this.completed.has(l.id) ? " done" : "");
+      const isDone = this.completed.has(l.id);
+      const bm = !isDone ? (this.bookmarks || {})[l.id] : null;   // "v:120.5" | "s:35"
+      card.className = "lesson-card" + (isDone ? " done" : "") + (bm ? " resumable" : "");
+      let bmChip = "";
+      if (bm) {
+        if (bm.startsWith("v:")) {
+          const sec = Math.round(parseFloat(bm.slice(2)) || 0);
+          bmChip = `<span class="chip chip-resume">▶ ${this._fmtClock(sec)} dan davom ettiring</span>`;
+        } else if (bm.startsWith("s:")) {
+          bmChip = `<span class="chip chip-resume">📖 ${Math.round(parseFloat(bm.slice(2)) || 0)}% o'qilgan — davom ettiring</span>`;
+        }
+      }
       card.innerHTML = `
         <span class="l-icon">${icons[l.type] || "📘"}</span>
         <h3>${UI.esc(l.title)}</h3>
@@ -292,6 +304,7 @@ const Learning = {
           <span class="chip">🪙 ${l.coins_reward}</span>
           ${l.file_size_mb ? `<span class="chip">💾 ${l.file_size_mb} MB</span>` : ""}
           ${l.related_test ? '<span class="chip">📝 test bor</span>' : ""}
+          ${bmChip}
         </div>`;
       card.onclick = () => this.openLesson(l);
       box.appendChild(card);
@@ -344,9 +357,13 @@ const Learning = {
   },
   async _flushWatch() {
     const secs = this._watchUnflushed || 0;
-    if (secs <= 0 || !this._watchLesson || !this.student) return;
+    if (!this._watchLesson || !this.student) return;
+    const payload = { student_id: this.student.id, lesson_id: this._watchLesson, seconds: secs };
+    // Video/audio bookmark pozitsiyasi (hozirgi vaqt)
+    const m = document.getElementById("lesson-media");
+    if (m && m.currentTime && !m.ended) payload.pos = "v:" + m.currentTime.toFixed(1);
     this._watchUnflushed = 0;
-    try { await API.post("/api/learning/watch", { student_id: this.student.id, lesson_id: this._watchLesson, seconds: secs }); } catch (e) {}
+    try { await API.post("/api/learning/watch", payload); } catch (e) {}
   },
   _stopWatchTimer() { if (this._watchTimer) { clearInterval(this._watchTimer); this._watchTimer = null; } this._watchPlaying = false; },
 
@@ -581,6 +598,21 @@ const Learning = {
       if (!media.src) media.src = `/api/lessons/${l.id}/media`;
       playBtn.disabled = false;
       enableCamera();   // video uchun kamerani ham yoqishga urinamiz (ruxsat so'raladi)
+      // Bookmarkdan davom ettirish — maxWatched'ni ham o'sha joyga qo'yamiz (oldinga o'tishga ruxsat)
+      const bm = (this.bookmarks || {})[l.id];
+      if (bm && bm.startsWith("v:")) {
+        const pos = parseFloat(bm.slice(2)) || 0;
+        const seek = () => {
+          if (!media.duration || isNaN(media.duration)) return;
+          const t = Math.min(pos, Math.max(0, media.duration - 1));
+          maxWatched = t;
+          try { media.currentTime = t; } catch (e) {}
+          UI.toast(`▶ ${this._fmtClock(t)} dan davom etadi`, "ok", 3500);
+          media.removeEventListener("loadedmetadata", seek);
+        };
+        if (media.duration && !isNaN(media.duration)) seek();
+        else media.addEventListener("loadedmetadata", seek);
+      }
       media.play().catch(() => { hideSpin(); setPlaying(false); });
     };
     const togglePlay = () => {
@@ -650,6 +682,37 @@ const Learning = {
       else b.textContent = `Iltimos o'qing... (${sec}s)`;
     }, 1000);
     btn.onclick = () => this.showComplete(l);
+
+    // Bookmark: avval saqlangan joydan davom ettirish
+    const bm = (this.bookmarks || {})[l.id];
+    if (bm && bm.startsWith("s:")) {
+      const pct = parseFloat(bm.slice(2)) || 0;
+      setTimeout(() => {
+        const total = document.documentElement.scrollHeight - window.innerHeight;
+        window.scrollTo({ top: Math.max(0, total * pct / 100), behavior: "smooth" });
+        UI.toast(`📖 ${Math.round(pct)}% o'qilgan joydan davom etadi`, "ok", 3500);
+      }, 250);
+    }
+    // Scroll bookmarkini ~2 soniyada bir saqlab boramiz
+    let bmSaveT = null;
+    const saveScroll = () => {
+      if (bmSaveT) return;
+      bmSaveT = setTimeout(() => {
+        bmSaveT = null;
+        const total = document.documentElement.scrollHeight - window.innerHeight;
+        if (total <= 0) return;
+        const pct = Math.max(0, Math.min(100, (window.scrollY / total) * 100));
+        if (!this.student) return;
+        API.post("/api/learning/bookmark", { student_id: this.student.id, lesson_id: l.id, pos: "s:" + pct.toFixed(1) }).catch(() => {});
+      }, 1800);
+    };
+    window.addEventListener("scroll", saveScroll, { passive: true });
+    const prevClose = this._closeReader;
+    this._closeReader = () => {
+      window.removeEventListener("scroll", saveScroll);
+      if (bmSaveT) clearTimeout(bmSaveT);
+      prevClose && prevClose();
+    };
 
     // Floating kamera + gaze (matn uchun) — kamerasiz vaqt yozilmaydi
     this._textGazeLooking = false;    // kamera yoqilmagan — vaqt sanalmaydi

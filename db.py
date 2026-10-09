@@ -253,6 +253,9 @@ def init_db():
             awarded_at TEXT NOT NULL,
             UNIQUE(student_id, key)
         )""")
+        # Darsni bookmark: "keyin davom ettirish" uchun pozitsiya
+        # Format: "v:120.5" (video/audio soniyasi) yoki "s:35" (matn scroll %)
+        _ensure_column(conn, "learning_activity", "bookmark_pos", "TEXT")
         # Standart hisob (egasi/owner) yaratamiz (agar hech kim bo'lmasa)
         cur = conn.execute("SELECT COUNT(*) AS c FROM teachers")
         if cur.fetchone()["c"] == 0:

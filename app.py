@@ -1061,6 +1061,50 @@ def add_student():
         conn.close()
 
 
+@app.route("/api/students/bulk", methods=["POST"])
+@role_required("owner", "zavuch")
+def add_students_bulk():
+    """CSV/matn qatorlaridan ko'p o'quvchi qo'shish.
+    JSON: {items: [{last_name, first_name, class_name?}, ...], default_class?: 'X-A'}
+    - class_name qatorда bo'lmasa default_class ishlatiladi
+    - Takrorlangan (ism+familiya+sinf) o'quvchilar o'tkazib yuboriladi
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    items = data.get("items") or []
+    default_cls = norm(data.get("default_class"))
+    if not isinstance(items, list) or not items:
+        return jsonify({"ok": False, "error": "O'quvchilar ro'yxati bo'sh"}), 400
+    sid = scope_school_id()
+    if sid is None:
+        return jsonify({"ok": False, "error": "Avval maktabga kiring"}), 400
+    conn = get_conn()
+    try:
+        added, skipped, errors = 0, 0, []
+        for i, it in enumerate(items, start=1):
+            first = norm((it or {}).get("first_name"))
+            last = norm((it or {}).get("last_name"))
+            cls = norm((it or {}).get("class_name")) or default_cls
+            if not first or not last:
+                errors.append(f"{i}-qator: ism yoki familiya bo'sh"); continue
+            if cls not in CLASSES:
+                errors.append(f"{i}-qator ({last} {first}): sinf '{cls}' noto'g'ri"); continue
+            dup = conn.execute(
+                "SELECT 1 FROM students WHERE lower(first_name)=lower(?) AND lower(last_name)=lower(?) AND class_name=? AND school_id=?",
+                (first, last, cls, sid),
+            ).fetchone()
+            if dup:
+                skipped += 1; continue
+            conn.execute(
+                "INSERT INTO students (first_name, last_name, class_name, school_id, created_at) VALUES (?, ?, ?, ?, ?)",
+                (first, last, cls, sid, now_iso()),
+            )
+            added += 1
+        conn.commit()
+        return jsonify({"ok": True, "added": added, "skipped": skipped, "errors": errors[:10]})
+    finally:
+        conn.close()
+
+
 @app.route("/api/students/<int:student_id>", methods=["PUT"])
 @role_required("owner", "zavuch")
 def update_student(student_id):
@@ -2007,6 +2051,10 @@ def learning_enter():
         class_name = student["class_name"]
         lessons = conn.execute("SELECT * FROM lessons WHERE class_name = ? AND school_id = ? ORDER BY created_at DESC, id DESC", (class_name, school_id)).fetchall()
         done = [r["lesson_id"] for r in conn.execute("SELECT DISTINCT lesson_id FROM learning_activity WHERE student_id = ? AND completed = 1", (student["id"],)).fetchall()]
+        # Bookmark pozitsiyalari (tugatilmagan darslar uchun)
+        bookmarks = {r["lesson_id"]: r["bookmark_pos"] for r in conn.execute(
+            "SELECT lesson_id, bookmark_pos FROM learning_activity WHERE student_id = ? AND completed = 0 AND bookmark_pos IS NOT NULL",
+            (student["id"],)).fetchall()}
         bd = time_breakdown(conn, student["id"])
         return jsonify({
             "ok": True,
@@ -2018,6 +2066,7 @@ def learning_enter():
                         "today_duration_seconds": bd["today_seconds"]},
             "lessons": [_lesson_public(l, conn) for l in lessons],
             "completed": done,
+            "bookmarks": bookmarks,
             "daily": bd["daily"],
         })
     finally:
@@ -2027,34 +2076,71 @@ def learning_enter():
 @app.route("/api/learning/watch", methods=["POST"])
 def learning_watch():
     """Heartbeat: o'quvchi video/audio ko'rayotganда sarflagan vaqtni (delta soniya) yozib boradi.
-    Dars tugatilmagan bo'lsa ham vaqt saqlanadi (coin faqat tugatganda beriladi)."""
+    Dars tugatilmagan bo'lsa ham vaqt saqlanadi (coin faqat tugatganda beriladi).
+    Ixtiyoriy `pos` — bookmark pozitsiyasi ("v:120.5" yoki "s:35")."""
     data = request.get_json(force=True, silent=True) or {}
     student_id = data.get("student_id")
     lesson_id = data.get("lesson_id")
+    pos = (data.get("pos") or "").strip() or None
     try:
         seconds = int(data.get("seconds") or 0)
     except (TypeError, ValueError):
         seconds = 0
-    if seconds <= 0:
+    if seconds <= 0 and not pos:
         return jsonify({"ok": True, "skipped": True})
-    seconds = min(seconds, 3600)
+    seconds = min(max(0, seconds), 3600)
     conn = get_conn()
     try:
         l = conn.execute("SELECT * FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
         s = conn.execute("SELECT 1 FROM students WHERE id = ?", (student_id,)).fetchone()
         if not l or not s:
             return jsonify({"ok": False, "error": "Topilmadi"}), 404
-        existing = conn.execute("SELECT id FROM learning_activity WHERE student_id = ? AND lesson_id = ?", (student_id, lesson_id)).fetchone()
+        existing = conn.execute("SELECT id, completed FROM learning_activity WHERE student_id = ? AND lesson_id = ?", (student_id, lesson_id)).fetchone()
         if existing:
-            conn.execute("UPDATE learning_activity SET duration_seconds = COALESCE(duration_seconds,0) + ? WHERE id = ?",
-                         (seconds, existing["id"]))
+            if seconds > 0:
+                conn.execute("UPDATE learning_activity SET duration_seconds = COALESCE(duration_seconds,0) + ? WHERE id = ?",
+                             (seconds, existing["id"]))
+            # Tugatilmagan bo'lsa — bookmark pozitsiyasini yangilaymiz
+            if pos and not existing["completed"]:
+                conn.execute("UPDATE learning_activity SET bookmark_pos = ? WHERE id = ?", (pos, existing["id"]))
         else:
             conn.execute(
-                "INSERT INTO learning_activity (student_id, lesson_id, type, coins_awarded, duration_seconds, completed, completed_at) "
-                "VALUES (?, ?, ?, 0, ?, 0, ?)",
-                (student_id, lesson_id, l["type"], seconds, now_iso()),
+                "INSERT INTO learning_activity (student_id, lesson_id, type, coins_awarded, duration_seconds, completed, completed_at, bookmark_pos) "
+                "VALUES (?, ?, ?, 0, ?, 0, ?, ?)",
+                (student_id, lesson_id, l["type"], seconds, now_iso(), pos),
             )
-        add_daily_time(conn, student_id, seconds)
+        if seconds > 0:
+            add_daily_time(conn, student_id, seconds)
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
+
+
+@app.route("/api/learning/bookmark", methods=["POST"])
+def learning_bookmark():
+    """Faqat bookmark pozitsiyasini saqlash (matn uchun — scroll %, ko'p yuborilmaydi)."""
+    data = request.get_json(force=True, silent=True) or {}
+    student_id = data.get("student_id")
+    lesson_id = data.get("lesson_id")
+    pos = (data.get("pos") or "").strip()
+    if not student_id or not lesson_id or not pos:
+        return jsonify({"ok": False, "error": "Noto'g'ri ma'lumot"}), 400
+    conn = get_conn()
+    try:
+        l = conn.execute("SELECT type FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+        if not l:
+            return jsonify({"ok": False, "error": "Dars topilmadi"}), 404
+        row = conn.execute("SELECT id, completed FROM learning_activity WHERE student_id=? AND lesson_id=?", (student_id, lesson_id)).fetchone()
+        if row:
+            if not row["completed"]:
+                conn.execute("UPDATE learning_activity SET bookmark_pos = ? WHERE id = ?", (pos, row["id"]))
+        else:
+            conn.execute(
+                "INSERT INTO learning_activity (student_id, lesson_id, type, coins_awarded, duration_seconds, completed, completed_at, bookmark_pos) "
+                "VALUES (?, ?, ?, 0, 0, 0, ?, ?)",
+                (student_id, lesson_id, l["type"], now_iso(), pos),
+            )
         conn.commit()
         return jsonify({"ok": True})
     finally:
@@ -2087,8 +2173,9 @@ def learning_complete():
                     conn.commit()
                 return jsonify({"ok": True, "already": True, "coins": 0, "total_coins": s["coins"] or 0})
             # Heartbeat orqali boshlangan (tugatilmagan) — endi tugatildi, coin beriladi
+            # Bookmark ham tozalanadi (tugatilgandan keyin kerak emas)
             conn.execute("UPDATE learning_activity SET completed = 1, coins_awarded = ?, "
-                         "duration_seconds = COALESCE(duration_seconds,0) + ?, completed_at = ? WHERE id = ?",
+                         "duration_seconds = COALESCE(duration_seconds,0) + ?, completed_at = ?, bookmark_pos = NULL WHERE id = ?",
                          (coins, duration_seconds, now_iso(), existing["id"]))
         else:
             conn.execute(
