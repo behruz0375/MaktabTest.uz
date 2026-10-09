@@ -171,6 +171,9 @@ body {
   font-weight: 800; font-size: .78rem; padding: 7px 10px; border-radius: 999px;
   font-family: inherit; transition: var(--trans);
 }
+/* Til tanlagich faqat kirish/bosh sahifada ko'rinadi — panellarda taymer, coin va
+   "Chiqish" tugmalari bilan to'qnashmasligi uchun yashiriladi (tanlangan til saqlanadi) */
+body[data-view]:not([data-view="view-login"]) .lang-switch { display: none; }
 .lang-switch button:hover { color: var(--text); }
 .lang-switch button.active {
   color: #fff; background: linear-gradient(135deg, var(--primary-1), var(--primary-2));
@@ -1858,6 +1861,11 @@ html { scroll-behavior: smooth; }
 @media (max-width: 600px) {
   .reader-scene.right { display: none; }
 }
+/* Login kartasi: tepadagi til/rejim tugmalari kartaning ustiga chiqib qolmasin */
+@media (max-width: 720px) {
+  .login-wrap { padding-top: 76px; }
+}
+
 /* Mobil: header o'ngida lang + theme uchun aniq joy; login tugmasi kompakt */
 @media (max-width: 720px) {
   .site-header { gap: 8px; padding-left: 12px; padding-right: 180px; flex-wrap: nowrap; }

@@ -5,6 +5,7 @@ const UI = {
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
     const el = document.getElementById(id);
     if (el) el.classList.add("active");
+    document.body.dataset.view = id;   // CSS shu orqali oynaga qarab elementlarni yashiradi
     window.scrollTo(0, 0);
   },
 
