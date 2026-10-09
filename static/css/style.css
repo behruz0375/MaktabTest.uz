@@ -1242,9 +1242,23 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
   padding: 0 12px 8px; color: #fff; transition: opacity .25s;
   background: linear-gradient(to top, rgba(0,0,0,.78), transparent);
 }
-.ytp-progress { position: relative; height: 5px; margin: 10px 0 8px; background: rgba(255,255,255,.3); border-radius: 3px; overflow: hidden; }
+.ytp-progress { position: relative; height: 5px; margin: 10px 0 8px; background: rgba(255,255,255,.3); border-radius: 3px; cursor: pointer; transition: height .15s; }
 .ytp-progress:hover { height: 7px; }
-.ytp-progress .player-fill { position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: #ff0033; box-shadow: none; transition: width .2s linear; }
+.ytp-buffered { position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: rgba(255,255,255,.5); border-radius: 3px; }
+.ytp-progress-hover { position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: rgba(255,255,255,.3); border-radius: 3px; pointer-events: none; }
+.ytp-progress .player-fill { position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: #ff0033; box-shadow: none; border-radius: 3px; transition: width .1s linear; }
+.ytp-scrubber {
+  position: absolute; top: 50%; left: 0%; width: 14px; height: 14px; margin-left: -7px; transform: translateY(-50%) scale(0);
+  background: #ff0033; border-radius: 50%; transition: transform .15s; pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+.ytp-progress:hover .ytp-scrubber { transform: translateY(-50%) scale(1); }
+.ytp-tooltip {
+  position: absolute; bottom: 18px; left: 0; transform: translateX(-50%);
+  background: rgba(0,0,0,.85); color: #fff; font-size: .78rem; font-weight: 700;
+  padding: 3px 8px; border-radius: 4px; pointer-events: none; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .ytp-controls { display: flex; align-items: center; gap: 8px; }
 .ytp-btn {
   background: transparent; border: none; color: #fff; cursor: pointer; font-family: inherit;
@@ -1253,8 +1267,22 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 }
 .ytp-btn:hover { color: #ff6a86; transform: scale(1.14); }
 .ytp-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
-.ytp-rew { font-size: .95rem; }
-.ytp-rew b { font-size: .62rem; font-weight: 800; }
+.ytp-rew, .ytp-fwd, .ytp-rate { font-size: .95rem; }
+.ytp-rew b, .ytp-fwd b { font-size: .62rem; font-weight: 800; }
+.ytp-rate { font-size: .82rem; font-weight: 800; min-width: 32px; opacity: .7; cursor: not-allowed; }
+.ytp-rate:hover { color: #fff; transform: none; }
+
+/* Ovoz slayderi (sichqoncha tegsa cho'ziladi) */
+.ytp-volbox { display: inline-flex; align-items: center; }
+.ytp-vol {
+  width: 0; opacity: 0; transition: width .22s, opacity .22s, margin .22s;
+  -webkit-appearance: none; appearance: none; background: transparent; margin: 0;
+}
+.ytp-vol::-webkit-slider-runnable-track { height: 3px; background: rgba(255,255,255,.4); border-radius: 2px; }
+.ytp-vol::-moz-range-track { height: 3px; background: rgba(255,255,255,.4); border-radius: 2px; }
+.ytp-vol::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 11px; height: 11px; border-radius: 50%; background: #fff; margin-top: -4px; }
+.ytp-vol::-moz-range-thumb { width: 11px; height: 11px; border-radius: 50%; background: #fff; border: none; }
+.ytp-volbox:hover .ytp-vol, .ytp-vol:focus { width: 72px; opacity: 1; margin: 0 4px; }
 .ytp-time { font-size: .85rem; font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 2px; white-space: nowrap; }
 .ytp-flex { flex: 1; }
 .ytp .watch-clock { background: rgba(255,255,255,.16); border: none; color: #8bffbe; font-size: .8rem; padding: 3px 10px; }
@@ -1266,18 +1294,35 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 /* Yuklash qoplamasi hamma narsadan ustun */
 .ytp .media-load-btn { z-index: 8; }
 
-/* Kamera monitori (stage burchagida — yuqori paneldan pastroq) */
-.gaze-cam {
-  position: absolute; top: 52px; right: 10px; width: 100px; height: 74px;
-  border-radius: 12px; overflow: hidden; z-index: 5; background: #000;
-  border: 2px solid rgba(255,255,255,.3); box-shadow: 0 6px 20px rgba(0,0,0,.5);
+/* Floating kamera widget (video darsда ham, matn darsida ham — ekranning istalgan joyiga suriladi) */
+.gaze-cam-float {
+  position: fixed; top: 110px; right: 22px; width: 160px; height: 118px;
+  border-radius: 14px; overflow: hidden; z-index: 150; background: #000;
+  border: 2px solid rgba(255,255,255,.35); box-shadow: 0 10px 30px rgba(0,0,0,.55);
+  user-select: none;
 }
-.gaze-cam video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-.gaze-dot {
-  position: absolute; left: 6px; bottom: 6px; width: 12px; height: 12px; border-radius: 50%;
+.gaze-cam-float.dragging { opacity: .85; cursor: grabbing; }
+.gaze-cam-float video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
+.gaze-cam-float .gaze-dot {
+  position: absolute; left: 7px; bottom: 7px; width: 12px; height: 12px; border-radius: 50%;
   background: #23c483; box-shadow: 0 0 10px #23c483; border: 1.5px solid #fff; transition: .3s;
 }
-.gaze-dot.off { background: var(--danger-1); box-shadow: 0 0 10px var(--danger-1); }
+.gaze-cam-float .gaze-dot.off { background: var(--danger-1); box-shadow: 0 0 10px var(--danger-1); }
+.gaze-cam-float .gaze-drag {
+  position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 6px;
+  background: rgba(0,0,0,.55); color: #fff; cursor: grab;
+  display: grid; place-items: center; font-size: .78rem; letter-spacing: -1px;
+  transition: background .2s;
+}
+.gaze-cam-float .gaze-drag:hover { background: rgba(0,0,0,.85); }
+.gaze-cam-float .gaze-drag:active { cursor: grabbing; }
+@media (max-width: 560px) {
+  .gaze-cam-float { width: 110px; height: 82px; top: 92px; right: 12px; }
+}
+
+/* Matn darsi — kamera tugmasi inline joyida ham chiroyli chiqsin */
+.reader-head { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; }
+.gaze-ctl.inline { flex: 1; justify-content: flex-end; max-width: none; margin: 0; padding: 8px 12px; }
 
 /* "Ekranga qarang" — pastdagi kichik ogohlantirish (video to'xtamaydi, faqat vaqt yozilmaydi) */
 .gaze-warn {

@@ -366,12 +366,6 @@ const Learning = {
             ${mb ? `<span class="ytp-size" title="Fayl hajmi">💾 ${mb}</span>` : ""}
           </div>
 
-          ${isVideo ? `
-          <div class="gaze-cam" id="gaze-cam" hidden>
-            <video id="gaze-video" muted playsinline></video>
-            <span class="gaze-dot" id="gaze-dot" title="Kamera nazorati"></span>
-          </div>` : ""}
-
           <!-- Markazdagi katta tugma -->
           <button class="ytp-bigplay" id="ytp-bigplay" type="button" aria-label="O'ynatish">▶</button>
 
@@ -384,14 +378,26 @@ const Learning = {
 
           <!-- Pastki boshqaruv (video ustida) -->
           <div class="ytp-bottom">
-            <div class="ytp-progress"><div class="player-fill" id="player-fill"></div></div>
+            <div class="ytp-progress" id="ytp-progress">
+              <div class="ytp-buffered" id="ytp-buffered"></div>
+              <div class="player-fill" id="player-fill"></div>
+              <div class="ytp-progress-hover" id="ytp-progress-hover"></div>
+              <div class="ytp-tooltip" id="ytp-tooltip" hidden>0:00</div>
+              <div class="ytp-scrubber" id="ytp-scrubber"></div>
+            </div>
             <div class="ytp-controls">
-              <button class="ytp-btn" id="pl-play" disabled title="O'ynatish / to'xtatish">▶</button>
-              <button class="ytp-btn ytp-rew" id="pl-rewind" title="10 soniya orqaga">↺<b>10</b></button>
+              <button class="ytp-btn" id="pl-play" disabled title="O'ynatish / to'xtatish (Space)">▶</button>
+              <button class="ytp-btn ytp-rew" id="pl-rewind" title="10s orqaga (←)">↺<b>10</b></button>
+              <button class="ytp-btn ytp-fwd" id="pl-forward" title="10s oldinga (→) — faqat ko'rilgan joy ichida">↻<b>10</b></button>
+              <div class="ytp-volbox">
+                <button class="ytp-btn" id="pl-mute" title="Ovoz (M)">🔊</button>
+                <input type="range" min="0" max="100" value="100" class="ytp-vol" id="pl-vol" title="Ovoz balandligi">
+              </div>
               <span class="ytp-time" id="pl-time">0:00 / 0:00</span>
               <span class="ytp-flex"></span>
               <span class="watch-clock" id="watch-clock" title="Yozilgan vaqt">⏱ 0:00</span>
-              ${isVideo ? `<button class="ytp-btn" id="pl-fs" title="To'liq ekran">⛶</button>` : ""}
+              <button class="ytp-btn ytp-rate" id="pl-rate" title="Tezlik (faqat 1x — tezlashtirib bo'lmaydi)">1x</button>
+              ${isVideo ? `<button class="ytp-btn" id="pl-fs" title="To'liq ekran (F)">⛶</button>` : ""}
             </div>
           </div>
         </div>
@@ -403,7 +409,7 @@ const Learning = {
         <p class="player-note" id="gaze-note">⚠️ Darsni oldinga o'tkazib bo'lmaydi. To'xtatsangiz${isVideo ? " yoki ekrandan ko'z uzsangiz" : ""} vaqt yozilmaydi.</p>
         ${isVideo ? `<div class="gaze-warn" id="gaze-warn" hidden>👀 Ekranga qarang — video darslik vaqti yozilmayapti</div>` : ""}
         <div id="pl-done-area"></div>
-      </div>`, { large: true, onClose: () => { try { Gaze.stop(); } catch (e) {} const mbx = document.getElementById("modal-box"); if (mbx) mbx.classList.remove("modal-video"); this._flushWatch(); this._stopWatchTimer(); this.stopMedia(); this.refreshLearning(); } });
+      </div>`, { large: true, onClose: () => { try { Gaze.stop(); } catch (e) {} this._removeFloatingCam(); const mbx = document.getElementById("modal-box"); if (mbx) mbx.classList.remove("modal-video"); if (this._mediaKeyHandler) { document.removeEventListener("keydown", this._mediaKeyHandler); this._mediaKeyHandler = null; } this._flushWatch(); this._stopWatchTimer(); this.stopMedia(); this.refreshLearning(); } });
 
     const modalBox = document.getElementById("modal-box");
     if (modalBox) modalBox.classList.add("modal-video");   // video player kengroq ko'rinsin
@@ -444,40 +450,117 @@ const Learning = {
     media.playbackRate = 1;
     let maxWatched = 0;
     media.addEventListener("ratechange", () => { if (media.playbackRate !== 1) media.playbackRate = 1; });
+    const fillEl = document.getElementById("player-fill");
+    const scrubEl = document.getElementById("ytp-scrubber");
+    const bufEl = document.getElementById("ytp-buffered");
+    const timeEl = document.getElementById("pl-time");
+    const updatePos = () => {
+      const dur = media.duration || 0;
+      const cur = media.currentTime || 0;
+      const pct = dur ? Math.min(100, (cur / dur) * 100) : 0;
+      if (fillEl) fillEl.style.width = pct + "%";
+      if (scrubEl) scrubEl.style.left = pct + "%";
+      if (timeEl) timeEl.textContent = `${this._fmtClock(cur)} / ${this._fmtClock(dur)}`;
+    };
+    const updateBuffered = () => {
+      try {
+        if (!media.duration || !media.buffered.length) return;
+        const end = media.buffered.end(media.buffered.length - 1);
+        bufEl.style.width = Math.min(100, (end / media.duration) * 100) + "%";
+      } catch (e) {}
+    };
     media.addEventListener("timeupdate", () => {
       if (media.currentTime > maxWatched) maxWatched = media.currentTime;
-      const pct = media.duration ? Math.min(100, (maxWatched / media.duration) * 100) : 0;
-      const f = document.getElementById("player-fill"); if (f) f.style.width = pct + "%";
-      const t = document.getElementById("pl-time");
-      if (t) t.textContent = `${this._fmtClock(media.currentTime)} / ${this._fmtClock(media.duration || 0)}`;
+      updatePos();
     });
+    media.addEventListener("progress", updateBuffered);
+    media.addEventListener("loadedmetadata", () => { updatePos(); updateBuffered(); });
+    // Oldinga o'tkazib bo'lmaydi — ko'rilgan joy chegarasidan oshsa qaytariladi
     media.addEventListener("seeking", () => {
       if (media.currentTime > maxWatched + 1.0) media.currentTime = maxWatched;
     });
     media.oncontextmenu = (e) => e.preventDefault();
+
+    // Progress barda sichqoncha + bosib seek (faqat ko'rilgan joy ichida)
+    const progEl = document.getElementById("ytp-progress");
+    const tipEl = document.getElementById("ytp-tooltip");
+    const hovEl = document.getElementById("ytp-progress-hover");
+    const seekAtEvent = (ev) => {
+      const dur = media.duration || 0;
+      if (!dur) return null;
+      const rect = progEl.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, ev.clientX - rect.left));
+      const t = (x / rect.width) * dur;
+      return { x, t };
+    };
+    progEl.addEventListener("mousemove", (ev) => {
+      const r = seekAtEvent(ev);
+      if (!r) return;
+      tipEl.hidden = false;
+      tipEl.textContent = this._fmtClock(r.t);
+      tipEl.style.left = r.x + "px";
+      hovEl.style.width = Math.max(0, (r.x / progEl.getBoundingClientRect().width) * 100) + "%";
+    });
+    progEl.addEventListener("mouseleave", () => { tipEl.hidden = true; hovEl.style.width = "0%"; });
+    progEl.addEventListener("click", (ev) => {
+      const r = seekAtEvent(ev);
+      if (!r) return;
+      // Faqat ko'rilgan joygacha — oldinga o'tishga ruxsat yo'q
+      media.currentTime = Math.min(r.t, maxWatched);
+    });
+
+    // Ovoz boshqaruvi (mute + volume slider)
+    const muteBtn = document.getElementById("pl-mute");
+    const volEl = document.getElementById("pl-vol");
+    const refreshMute = () => {
+      muteBtn.textContent = media.muted || media.volume === 0 ? "🔇" : (media.volume < 0.5 ? "🔉" : "🔊");
+    };
+    muteBtn.onclick = () => { media.muted = !media.muted; refreshMute(); };
+    volEl.oninput = () => { media.volume = volEl.value / 100; if (media.muted && volEl.value > 0) media.muted = false; refreshMute(); };
+    media.addEventListener("volumechange", refreshMute);
+
+    // Oldinga o'tish tugmasi (ko'rilgan joy ichida 10s)
+    document.getElementById("pl-forward").onclick = () => {
+      if (!media.src) return;
+      media.currentTime = Math.min(maxWatched, media.currentTime + 10);
+    };
+
+    // Klaviatura: Space, ←, →, F, M
+    const onKey = (e) => {
+      if (!document.getElementById("modal-overlay").classList.contains("on")) return;
+      if (!document.getElementById("media-box")) return;
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
+      if (e.key === " ") { e.preventDefault(); togglePlay(); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); if (media.src) media.currentTime = Math.max(0, media.currentTime - 10); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); if (media.src) media.currentTime = Math.min(maxWatched, media.currentTime + 10); }
+      else if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFs(); }
+      else if (e.key === "m" || e.key === "M") { e.preventDefault(); media.muted = !media.muted; refreshMute(); }
+    };
+    document.addEventListener("keydown", onKey);
+    this._mediaKeyHandler = onKey;
 
     // ===== Kamera nazorati (faqat video) =====
     // Kamera yoqilmaguncha va ekranga qaralmaguncha dars vaqti YOZILMAYDI (_gazeOk=false).
     const enableCamera = () => {
       if (!isVideo || this._gazeActive || this._gazeStarting) return;
       this._gazeStarting = true;
-      const cam = document.getElementById("gaze-cam");
-      const dot = document.getElementById("gaze-dot");
       const warn = document.getElementById("gaze-warn");
       const ctl = document.getElementById("gaze-ctl");
       const ctlMsg = document.getElementById("gaze-ctl-msg");
       const enableBtn = document.getElementById("gaze-enable");
-      if (cam) cam.hidden = false;
+      const camEl = this._showFloatingCam();
+      const videoEl = camEl.querySelector("video");
+      const dot = camEl.querySelector(".gaze-dot");
       if (enableBtn) { enableBtn.disabled = true; enableBtn.textContent = "📷 Yoqilmoqda..."; }
       if (ctlMsg) ctlMsg.textContent = "Kameraga ruxsat berish oynasini tasdiqlang...";
-      Gaze.start(document.getElementById("gaze-video"), {
-        // Har kadrda: qarab tursa vaqt sanaladi, qaramasa sanalmaydi (video to'xtamaydi)
+      Gaze.start(videoEl, {
         onState: (looking) => { this._gazeOk = looking; if (dot) dot.classList.toggle("off", !looking); },
-        onAway: () => { this._flushWatch(); if (warn) warn.hidden = false; },  // pastda kichik ogohlantirish
+        onAway: () => { this._flushWatch(); if (warn) warn.hidden = false; },
         onBack: () => { if (warn) warn.hidden = true; },
         onFail: (msg) => {
           this._gazeStarting = false; this._gazeActive = false; this._gazeOk = false;
-          if (cam) cam.hidden = true;
+          this._removeFloatingCam();
           if (warn) warn.hidden = true;
           if (ctl) ctl.hidden = false;
           if (enableBtn) { enableBtn.disabled = false; enableBtn.textContent = "📷 Kamerani yoqish"; }
@@ -485,7 +568,7 @@ const Learning = {
         },
       }).then((ok) => {
         this._gazeStarting = false;
-        if (ok) { this._gazeActive = true; if (ctl) ctl.hidden = true; }  // kamera yoqildi — vaqt sanala boshlaydi
+        if (ok) { this._gazeActive = true; if (ctl) ctl.hidden = true; }
       });
     };
     const enableBtn0 = document.getElementById("gaze-enable");
@@ -534,15 +617,21 @@ const Learning = {
     document.querySelector(".learn-tabs").style.display = "none";
     reader.style.display = "block";
     reader.innerHTML = `
-      <button class="btn btn-ghost" id="reader-back" style="margin-bottom:14px">← Darslarga qaytish</button>
+      <div class="reader-head"><button class="btn btn-ghost" id="reader-back">← Darslarga qaytish</button>
+        <div class="gaze-ctl inline" id="gaze-ctl"><button class="btn btn-secondary btn-sm" id="gaze-enable" type="button">📷 Kamerani yoqish</button><span class="gaze-ctl-msg" id="gaze-ctl-msg">Matnni o'qish vaqti yozilishi uchun kamerani yoqing — kamerasiz vaqt sanalmaydi.</span></div>
+      </div>
       <h2 style="margin-bottom:12px">📖 ${UI.esc(l.title)}</h2>
       ${img}
       <div class="text-reader">${UI.esc(l.text_content || "")}</div>
       <div style="text-align:center;margin-top:16px">
         <button class="btn btn-success" id="txt-done" disabled>Iltimos o'qing...</button>
       </div>
+      <div id="gaze-warn-text" class="gaze-warn" hidden>👀 Ekranga qarang — o'qish vaqti yozilmayapti</div>
       <div id="pl-done-area"></div>`;
     this._closeReader = () => {
+      try { Gaze.stop(); } catch (e) {}
+      this._textGazeStop && this._textGazeStop();
+      this._removeFloatingCam();
       reader.style.display = "none"; reader.innerHTML = "";
       document.querySelector(".learn-tabs").style.display = "";
       this._closeReader = null; this.refreshLearning();
@@ -561,14 +650,121 @@ const Learning = {
       else b.textContent = `Iltimos o'qing... (${sec}s)`;
     }, 1000);
     btn.onclick = () => this.showComplete(l);
+
+    // Floating kamera + gaze (matn uchun) — kamerasiz vaqt yozilmaydi
+    this._textGazeLooking = false;    // kamera yoqilmagan — vaqt sanalmaydi
+    this._textGazeAllowedMs = 0;      // kameraga qaragan paytdagi jami ms
+    this._textGazeLastT = null;
+    const tick = () => {
+      if (this._textGazeLooking && this._textGazeLastT) {
+        this._textGazeAllowedMs += Date.now() - this._textGazeLastT;
+      }
+      this._textGazeLastT = this._textGazeLooking ? Date.now() : null;
+    };
+    const timer = setInterval(tick, 1000);
+    this._textGazeStop = () => { clearInterval(timer); this._textGazeLooking = false; this._textGazeLastT = null; };
+
+    const enableBtn = document.getElementById("gaze-enable");
+    const ctlMsg = document.getElementById("gaze-ctl-msg");
+    const warn = document.getElementById("gaze-warn-text");
+    const ctl = document.getElementById("gaze-ctl");
+    enableBtn.onclick = async () => {
+      enableBtn.disabled = true; enableBtn.textContent = "📷 Yoqilmoqda...";
+      ctlMsg.textContent = "Kameraga ruxsat berish oynasini tasdiqlang...";
+      const camEl = this._showFloatingCam();
+      const videoEl = camEl.querySelector("video");
+      const dot = camEl.querySelector(".gaze-dot");
+      const ok = await Gaze.start(videoEl, {
+        onState: (looking) => {
+          this._textGazeLastT = this._textGazeLastT || (looking ? Date.now() : null);
+          if (looking && !this._textGazeLooking) this._textGazeLastT = Date.now();
+          this._textGazeLooking = looking;
+          dot && dot.classList.toggle("off", !looking);
+        },
+        onAway: () => { if (warn) warn.hidden = false; },
+        onBack: () => { if (warn) warn.hidden = true; },
+        onFail: (msg) => {
+          ctl.hidden = false;
+          enableBtn.disabled = false; enableBtn.textContent = "📷 Kamerani yoqish";
+          ctlMsg.textContent = "⚠️ " + UI.esc(msg) + " Kamerasiz vaqt yozilmaydi.";
+          this._removeFloatingCam();
+        },
+      });
+      if (ok) ctl.hidden = true;
+    };
+  },
+
+  /* Draggable floating kamera widget (video va matn uchun bir xil) */
+  _showFloatingCam() {
+    this._removeFloatingCam();
+    const w = document.createElement("div");
+    w.className = "gaze-cam-float";
+    w.innerHTML = `<video muted playsinline></video><span class="gaze-dot" title="Kamera nazorati"></span><span class="gaze-drag" title="Surish uchun ushlang">⋮⋮</span>`;
+    // Avval saqlangan joy bo'lsa qaytaramiz
+    try {
+      const pos = JSON.parse(localStorage.getItem("mt-cam-pos") || "null");
+      if (pos && pos.r != null && pos.t != null) { w.style.right = pos.r + "px"; w.style.top = pos.t + "px"; }
+    } catch (e) {}
+    document.body.appendChild(w);
+    // Draggable
+    const drag = w.querySelector(".gaze-drag");
+    let sx = 0, sy = 0, sr = 0, st = 0, dragging = false;
+    const start = (ev) => {
+      ev.preventDefault();
+      dragging = true;
+      const p = ev.touches ? ev.touches[0] : ev;
+      sx = p.clientX; sy = p.clientY;
+      const r = w.getBoundingClientRect();
+      sr = window.innerWidth - r.right; st = r.top;
+      w.classList.add("dragging");
+    };
+    const move = (ev) => {
+      if (!dragging) return;
+      const p = ev.touches ? ev.touches[0] : ev;
+      let nr = Math.max(0, sr - (p.clientX - sx));
+      let nt = Math.max(0, st + (p.clientY - sy));
+      nr = Math.min(nr, window.innerWidth - w.offsetWidth);
+      nt = Math.min(nt, window.innerHeight - w.offsetHeight);
+      w.style.right = nr + "px"; w.style.top = nt + "px"; w.style.bottom = "auto"; w.style.left = "auto";
+    };
+    const end = () => {
+      if (!dragging) return;
+      dragging = false; w.classList.remove("dragging");
+      const r = w.getBoundingClientRect();
+      try { localStorage.setItem("mt-cam-pos", JSON.stringify({ r: Math.round(window.innerWidth - r.right), t: Math.round(r.top) })); } catch (e) {}
+    };
+    drag.addEventListener("mousedown", start);
+    drag.addEventListener("touchstart", start, { passive: false });
+    document.addEventListener("mousemove", move);
+    document.addEventListener("touchmove", move, { passive: false });
+    document.addEventListener("mouseup", end);
+    document.addEventListener("touchend", end);
+    this._floatCam = { el: w, cleanup: () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("touchmove", move);
+      document.removeEventListener("mouseup", end);
+      document.removeEventListener("touchend", end);
+    } };
+    return w;
+  },
+  _removeFloatingCam() {
+    if (this._floatCam) {
+      try { this._floatCam.cleanup && this._floatCam.cleanup(); } catch (e) {}
+      try { this._floatCam.el.remove(); } catch (e) {}
+      this._floatCam = null;
+    }
   },
 
   async showComplete(l) {
     let duration_seconds = 0;
     if (l.type === "text") {
-      // Matn: o'qishga ketgan vaqt
-      duration_seconds = this._lessonStartTime ? Math.round((Date.now() - this._lessonStartTime) / 1000) : 0;
+      // Matn: kameraga qaragan vaqtgina (kamera yoqilmagan bo'lsa — 0)
+      duration_seconds = Math.round((this._textGazeAllowedMs || 0) / 1000);
+      this._textGazeAllowedMs = 0;
       this._lessonStartTime = null;
+      try { Gaze.stop(); } catch (e) {}
+      this._textGazeStop && this._textGazeStop();
+      this._removeFloatingCam();
     } else {
       // Video/audio: vaqt heartbeat orqali yozilgan — qolganini yuboramiz
       await this._flushWatch();
