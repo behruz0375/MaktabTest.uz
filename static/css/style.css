@@ -80,6 +80,34 @@ body {
   background-size: 400% 400%;
   animation: gradientMove 18s ease infinite;
 }
+
+/* ===== 4 ta rasmli orqa fon slaydshow (crossfade) ===== */
+#bg-slideshow { position: fixed; inset: 0; z-index: -4; overflow: hidden; pointer-events: none; }
+.bg-slide {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  opacity: 0;
+  animation: bgSlide 32s infinite;
+  will-change: opacity;
+}
+/* Har bir slayd 8 soniya ko'rinadi, keyin crossfade (jami 4 × 8 = 32s sikl) */
+.bg-slide:nth-child(1) { animation-delay: 0s; }
+.bg-slide:nth-child(2) { animation-delay: 8s; }
+.bg-slide:nth-child(3) { animation-delay: 16s; }
+.bg-slide:nth-child(4) { animation-delay: 24s; }
+@keyframes bgSlide {
+  0%, 2% { opacity: 0; transform: scale(1.02); }
+  5%, 25% { opacity: 1; transform: scale(1); }   /* ko'rinish 20% (~6.4s) */
+  28%, 100% { opacity: 0; transform: scale(1.04); }   /* yopiq */
+}
+/* Matn o'qilishi uchun yarim shaffof qoplama (dark/light modeni hisobga oladi) */
+.bg-slide-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(15, 12, 41, .72), rgba(36, 27, 69, .72), rgba(18, 32, 58, .72));
+}
+[data-theme="light"] .bg-slide-overlay {
+  background: linear-gradient(135deg, rgba(219, 230, 255, .82), rgba(234, 224, 255, .82), rgba(215, 245, 239, .82));
+}
 @keyframes gradientMove {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
@@ -1598,7 +1626,7 @@ html { scroll-behavior: smooth; }
   position: sticky; top: 0; z-index: 40;
   display: flex; align-items: center; gap: 18px;
   padding: 13px clamp(16px, 4vw, 44px);
-  padding-right: 84px;                 /* o'ng yuqoridagi rejim tugmasiga joy */
+  padding-right: 220px;                /* o'ngda til tanlagich (UZ/УЗ/RU) + rejim tugmasi uchun joy */
   background: var(--card);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--card-border);
@@ -1616,7 +1644,12 @@ html { scroll-behavior: smooth; }
 .site-nav a {
   position: relative; text-decoration: none; color: var(--muted);
   font-weight: 600; font-size: .95rem; padding: 8px 12px; border-radius: 10px;
-  transition: var(--trans);
+  transition: var(--trans); white-space: nowrap;
+}
+/* Nav + login + til tanlagich + rejim tugmasi kichik ekranda sig'maydi — nav'ni yashiramiz
+   (foydalanuvchi havolalarni footer orqali topadi) */
+@media (max-width: 1100px) {
+  .site-nav { display: none; }
 }
 .site-nav a::after {
   content: ""; position: absolute; left: 12px; right: 12px; bottom: 5px; height: 2px;
@@ -1625,7 +1658,8 @@ html { scroll-behavior: smooth; }
 }
 .site-nav a:hover { color: var(--text); }
 .site-nav a:hover::after { transform: scaleX(1); }
-.site-login-btn { padding: 10px 20px; font-size: .95rem; white-space: nowrap; animation: softPulse 2.8s ease-in-out infinite; }
+.site-login-btn { padding: 10px 20px; font-size: .95rem; white-space: nowrap; flex-shrink: 0; animation: softPulse 2.8s ease-in-out infinite; }
+.site-nav { min-width: 0; }
 
 /* ---------- Hero ---------- */
 .hero {
@@ -1825,7 +1859,7 @@ html { scroll-behavior: smooth; }
   .reader-scene.right { display: none; }
 }
 @media (max-width: 480px) {
-  .site-header { gap: 10px; padding-left: 14px; padding-right: 72px; }
+  .site-header { gap: 10px; padding-left: 14px; padding-right: 180px; }
   .site-logo { font-size: 1.02rem; }
   .site-login-btn { padding: 9px 13px; font-size: .84rem; }
   .footer-inner { grid-template-columns: 1fr; }
