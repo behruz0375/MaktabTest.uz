@@ -242,7 +242,7 @@ body[data-view]:not([data-view="view-login"]) #bg-slideshow { display: none; }
 }
 .brand-title span { -webkit-text-fill-color: var(--accent); }
 @keyframes shimmer { to { background-position: 200% center; } }
-.brand-sub { color: var(--muted); margin-top: 6px; margin-bottom: 22px; font-size: .95rem; }
+.brand-sub { color: var(--accent); margin-top: 6px; margin-bottom: 22px; font-size: .95rem; font-weight: 600; }
 
 /* Tablar */
 .tabs {
@@ -326,7 +326,7 @@ body[data-view]:not([data-view="view-login"]) #bg-slideshow { display: none; }
   text-align: center;
 }
 .hint { color: var(--muted); font-size: .82rem; margin-top: 4px; }
-.login-foot { color: var(--muted); font-size: .82rem; }
+.login-foot { color: var(--accent); font-size: .82rem; font-weight: 600; }
 
 /* =========================================================
    TUGMALAR
@@ -405,7 +405,7 @@ body[data-view]:not([data-view="view-login"]) #bg-slideshow { display: none; }
   color: #fff; padding: 6px 14px; border-radius: 999px;
   font-weight: 700; font-size: .85rem;
 }
-.test-title { font-size: 1.25rem; font-weight: 800; }
+.test-title { font-size: 1.25rem; font-weight: 800; background: linear-gradient(90deg, var(--primary-1), var(--accent)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .muted { color: var(--muted); font-size: .9rem; }
 
 .timer-wrap { text-align: right; }
@@ -439,7 +439,7 @@ body[data-view]:not([data-view="view-login"]) #bg-slideshow { display: none; }
   animation: slideUp .4s ease;
 }
 @keyframes slideUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-.q-text { font-size: 1.35rem; font-weight: 700; line-height: 1.5; margin-bottom: 24px; }
+.q-text { font-size: 1.35rem; font-weight: 700; line-height: 1.5; margin-bottom: 24px; color: var(--primary-2); }
 
 .q-options { display: flex; flex-direction: column; gap: 14px; }
 .opt {
@@ -483,7 +483,7 @@ body[data-view]:not([data-view="view-login"]) #bg-slideshow { display: none; }
   height: fit-content;
   position: sticky; top: 100px;
 }
-.q-navigator h3 { margin-bottom: 14px; font-size: 1.05rem; }
+.q-navigator h3 { margin-bottom: 14px; font-size: 1.05rem; color: var(--accent); }
 .nav-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -531,7 +531,7 @@ body[data-view]:not([data-view="view-login"]) #bg-slideshow { display: none; }
   min-height: 100vh;
   position: sticky; top: 0;
 }
-.sidebar-brand { font-size: 1.15rem; font-weight: 800; padding: 10px 12px 18px; }
+.sidebar-brand { font-size: 1.15rem; font-weight: 800; padding: 10px 12px 18px; background: linear-gradient(90deg, var(--primary-1), var(--primary-2), var(--accent)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .side-nav { display: flex; flex-direction: column; gap: 8px; flex: 1; }
 .side-btn {
   text-align: left;
@@ -568,7 +568,7 @@ body[data-view]:not([data-view="view-login"]) #bg-slideshow { display: none; }
 .panel-section.active { display: block; }
 
 .section-head { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
-.section-head h2 { font-size: 1.5rem; }
+.section-head h2 { font-size: 1.5rem; background: linear-gradient(90deg, var(--primary-2), var(--accent)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .back-btn {
   padding: 10px 18px;
   border-radius: 999px;
@@ -708,7 +708,7 @@ select option,
   transition: var(--trans);
 }
 .test-card:hover { border-color: var(--primary-1); box-shadow: 0 12px 30px rgba(0, 0, 0, .28); }
-.test-card h3 { margin-bottom: 8px; }
+.test-card h3 { margin-bottom: 8px; color: var(--primary-2); }
 .test-card .code-big {
   font-size: 1.9rem; font-weight: 900; letter-spacing: 4px;
   color: var(--accent); text-align: center;
@@ -746,7 +746,7 @@ select option,
   color: #fff; font-weight: 800; font-size: 1.1rem;
 }
 .student-info { flex: 1 1 200px; min-width: 180px; }
-.student-info .name { font-weight: 700; font-size: 1.05rem; }
+.student-info .name { font-weight: 700; font-size: 1.05rem; color: var(--success-2); }
 .student-info .sub { color: var(--muted); font-size: .85rem; }
 .status-pill { padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: .82rem; white-space: nowrap; }
 .status-pill.done { background: linear-gradient(135deg, var(--success-1), var(--success-2)); color: #fff; }
@@ -777,7 +777,7 @@ select option,
   box-shadow: 0 8px 22px var(--glow);
 }
 
-.results-title { font-size: 1.3rem; font-weight: 800; margin: 6px 0 14px; display: flex; align-items: center; gap: 10px; }
+.results-title { font-size: 1.3rem; font-weight: 800; margin: 6px 0 14px; display: flex; align-items: center; gap: 10px; color: var(--primary-2); }
 
 /* Reyting: o'rin va yulduzchalar */
 .rank-badge {
@@ -1063,7 +1063,7 @@ body.modal-open { overflow: hidden; }   /* modal ochiq bo'lsa orqa fon scroll qi
   background: linear-gradient(135deg, var(--success-1), var(--success-2)); color: #fff;
   font-size: .72rem; font-weight: 800; padding: 4px 34px; transform: rotate(35deg);
 }
-.lesson-card h3 { margin: 8px 0; }
+.lesson-card h3 { margin: 8px 0; color: var(--accent); }
 
 /* Media pleyer (tez o'tkazib bo'lmaydigan) */
 .player-wrap { text-align: center; max-width: 640px; margin: 0 auto; }
@@ -1106,7 +1106,7 @@ body.modal-open { overflow: hidden; }   /* modal ochiq bo'lsa orqa fon scroll qi
 }
 .game-card:hover { border-color: var(--primary-1); box-shadow: 0 14px 32px var(--glow); }
 .game-card .g-emoji { font-size: 3rem; display: block; margin-bottom: 10px; animation: bob 3s ease-in-out infinite; }
-.game-card h3 { margin-bottom: 6px; }
+.game-card h3 { margin-bottom: 6px; color: var(--success-1); }
 .game-wrap { text-align: center; }
 .game-status { font-weight: 800; font-size: 1.1rem; margin: 10px 0; min-height: 1.4em; }
 .game-controls { display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
@@ -1441,7 +1441,7 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 .ach-ico { font-size: 2rem; margin-bottom: 4px; }
 .ach-card.earned .ach-ico { animation: achPop 1.6s ease-in-out infinite; }
 @keyframes achPop { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
-.ach-title { font-weight: 700; font-size: .88rem; margin-bottom: 4px; }
+.ach-title { font-weight: 700; font-size: .88rem; margin-bottom: 4px; color: var(--success-2); }
 .ach-coin { font-size: .74rem; color: var(--muted); }
 .ach-card.earned .ach-coin { color: var(--success-1); font-weight: 700; }
 
@@ -1479,7 +1479,7 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 
 /* Oxirgi 7 kun faolligi diagrammasi */
 .chart7-box { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; }
-.chart7-title { font-weight: 800; margin-bottom: 12px; }
+.chart7-title { font-weight: 800; margin-bottom: 12px; color: var(--primary-2); }
 .chart7 { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; height: 130px; }
 .c7-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; gap: 4px; }
 .c7-track { width: 100%; max-width: 34px; height: 78px; display: flex; align-items: flex-end; background: var(--inp-bg); border-radius: 8px 8px 4px 4px; overflow: hidden; }
@@ -1503,7 +1503,7 @@ input[type="file"].inp { padding: 10px; cursor: pointer; }
 
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
 .dash-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow-soft); }
-.dash-card h3 { margin-bottom: 16px; }
+.dash-card h3 { margin-bottom: 16px; color: var(--accent); }
 
 /* Podium (eng zor 3 ta) */
 .podium { display: flex; align-items: flex-end; justify-content: center; gap: 12px; margin-bottom: 10px; }
@@ -1665,9 +1665,9 @@ html { scroll-behavior: smooth; }
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   text-shadow: 0 2px 20px rgba(0,0,0,.9), 0 1px 4px rgba(0,0,0,.7);
 }
-.hero h1 { color: #fff; }
+.hero h1 { background: linear-gradient(90deg, #fff, var(--primary-2), var(--accent), #fff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; background-size: 200% auto; animation: shimmer 5s linear infinite; filter: drop-shadow(0 2px 12px rgba(0,0,0,.4)); }
 .hero-logo { font-size: 3.4rem; animation: floaty 4s ease-in-out infinite; }
-.hero-lead { max-width: 640px; color: #e0e0e0; font-size: 1.08rem; line-height: 1.65; margin-top: 10px; }
+.hero-lead { max-width: 640px; color: var(--accent); font-size: 1.08rem; line-height: 1.65; margin-top: 10px; }
 .hero-cta { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 24px; }
 .hero-cta .btn { text-decoration: none; }
 .hero-cta .btn-primary { animation: softPulse 2.8s ease-in-out infinite; }
@@ -1697,8 +1697,8 @@ html { scroll-behavior: smooth; }
   background: var(--inp-bg); border: 1px solid var(--card-border);
   color: var(--primary-2); font-weight: 700; font-size: .82rem; margin-bottom: 14px;
 }
-.section-title { font-size: clamp(1.5rem, 3.4vw, 2.1rem); margin-bottom: 10px; color: #fff; text-shadow: 0 2px 16px rgba(0,0,0,.8); }
-.section-lead { color: #ddd; max-width: 560px; margin: 0 auto 34px; font-size: 1rem; line-height: 1.6; text-shadow: 0 1px 10px rgba(0,0,0,.7); }
+.section-title { font-size: clamp(1.5rem, 3.4vw, 2.1rem); margin-bottom: 10px; background: linear-gradient(90deg, #fff, var(--primary-2), var(--accent)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; text-shadow: none; filter: drop-shadow(0 2px 10px rgba(0,0,0,.5)); }
+.section-lead { color: var(--accent); max-width: 560px; margin: 0 auto 34px; font-size: 1rem; line-height: 1.6; text-shadow: 0 1px 10px rgba(0,0,0,.7); }
 
 /* Qulayliklar kartalari */
 .landing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 18px; text-align: left; }
@@ -1720,7 +1720,7 @@ html { scroll-behavior: smooth; }
 .landing-card:hover::before { transform: scaleX(1); }
 .landing-ico { font-size: 2rem; margin-bottom: 10px; display: inline-block; transition: transform .3s ease; }
 .landing-card:hover .landing-ico { transform: scale(1.18) rotate(-6deg); }
-.landing-card h3 { font-size: 1.05rem; margin-bottom: 7px; }
+.landing-card h3 { font-size: 1.05rem; margin-bottom: 7px; color: var(--primary-2); }
 .landing-card p { color: var(--muted); font-size: .9rem; line-height: 1.6; }
 
 /* Panellar (kimlar uchun) */
@@ -1742,7 +1742,7 @@ html { scroll-behavior: smooth; }
   box-shadow: 0 8px 20px var(--glow); transition: transform .3s ease;
 }
 .panel-card:hover .panel-ico { transform: rotate(8deg) scale(1.08); }
-.panel-card h3 { font-size: 1rem; margin-bottom: 6px; }
+.panel-card h3 { font-size: 1rem; margin-bottom: 6px; color: var(--accent); }
 .panel-card p { color: var(--muted); font-size: .86rem; line-height: 1.55; }
 
 /* Qadamlar */
@@ -1763,7 +1763,7 @@ html { scroll-behavior: smooth; }
   background: linear-gradient(135deg, var(--primary-1), var(--primary-2));
   box-shadow: 0 8px 18px var(--glow);
 }
-.step-card h3 { font-size: 1rem; margin: 8px 0 6px; }
+.step-card h3 { font-size: 1rem; margin: 8px 0 6px; color: var(--primary-2); }
 .step-card p { color: var(--muted); font-size: .88rem; line-height: 1.55; }
 
 /* CTA band */
@@ -1784,7 +1784,7 @@ html { scroll-behavior: smooth; }
   max-width: 1120px; margin: 0 auto; padding: 44px 24px 26px;
   display: grid; grid-template-columns: 1.7fr 1fr 1fr 1.1fr; gap: 28px; text-align: left;
 }
-.footer-col h4 { font-size: .95rem; margin-bottom: 12px; }
+.footer-col h4 { font-size: .95rem; margin-bottom: 12px; color: var(--primary-2); }
 .footer-col a, .footer-contact {
   display: block; color: var(--muted); text-decoration: none; font-size: .9rem;
   padding: 4px 0; transition: var(--trans);
