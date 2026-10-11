@@ -83,6 +83,7 @@ body {
 
 /* ===== 4 ta rasmli orqa fon slaydshow (crossfade) ===== */
 #bg-slideshow { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
+body[data-view]:not([data-view="view-login"]) #bg-slideshow { display: none; }
 .bg-slide {
   position: absolute; inset: 0;
   background-size: cover; background-position: center; background-repeat: no-repeat;
@@ -103,7 +104,7 @@ body {
 /* Matn o'qilishi uchun yarim shaffof qoplama (dark/light modeni hisobga oladi) */
 .bg-slide-overlay {
   position: absolute; inset: 0;
-  background: linear-gradient(135deg, rgba(15, 12, 41, .58), rgba(36, 27, 69, .55), rgba(18, 32, 58, .58));
+  background: linear-gradient(135deg, rgba(15, 12, 41, .68), rgba(36, 27, 69, .65), rgba(18, 32, 58, .68));
 }
 [data-theme="light"] .bg-slide-overlay {
   background: linear-gradient(135deg, rgba(219, 230, 255, .82), rgba(234, 224, 255, .82), rgba(215, 245, 239, .82));
