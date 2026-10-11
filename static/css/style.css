@@ -82,7 +82,7 @@ body {
 }
 
 /* ===== 4 ta rasmli orqa fon slaydshow (crossfade) ===== */
-#bg-slideshow { position: fixed; inset: 0; z-index: -4; overflow: hidden; pointer-events: none; }
+#bg-slideshow { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
 .bg-slide {
   position: absolute; inset: 0;
   background-size: cover; background-position: center; background-repeat: no-repeat;
@@ -103,7 +103,7 @@ body {
 /* Matn o'qilishi uchun yarim shaffof qoplama (dark/light modeni hisobga oladi) */
 .bg-slide-overlay {
   position: absolute; inset: 0;
-  background: linear-gradient(135deg, rgba(15, 12, 41, .72), rgba(36, 27, 69, .72), rgba(18, 32, 58, .72));
+  background: linear-gradient(135deg, rgba(15, 12, 41, .86), rgba(36, 27, 69, .84), rgba(18, 32, 58, .86));
 }
 [data-theme="light"] .bg-slide-overlay {
   background: linear-gradient(135deg, rgba(219, 230, 255, .82), rgba(234, 224, 255, .82), rgba(215, 245, 239, .82));
@@ -115,7 +115,7 @@ body {
 }
 
 /* ---------- Uchib yuruvchi kitoblar ---------- */
-#bg-books { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
+#bg-books { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .book {
   position: absolute;
   font-size: 3.4rem;
