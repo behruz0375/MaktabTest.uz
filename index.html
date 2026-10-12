@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="uz" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📚 MaktabTest.uz — Onlayn test tizimi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Orqa fon: uchib yuruvchi kitoblar -->
+  <div id="bg-books" aria-hidden="true"></div>
+  <div id="bg-gradient" aria-hidden="true"></div>
+
+  <!-- Salyutlar (fireworks) -->
+  <canvas id="fireworks" aria-hidden="true"></canvas>
+
+  <!-- Rejim almashtirish (qorong'i / yorug') -->
+  <button id="theme-toggle" class="theme-toggle" title="Rejimni almashtirish">🌙</button>
+
+  <!-- ================= KIRISH (LOGIN) ================= -->
+  <div id="view-login" class="view active">
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="brand-logo">📚</div>
+        <h1 class="brand-title">MaktabTest<span>.uz</span></h1>
+        <p class="brand-sub">Maktab uchun onlayn bilim sinovi tizimi</p>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="student">🎓 O'quvchi</button>
+          <button class="tab" data-tab="teacher" data-form="teacher-login" data-hint="O'qituvchi login va parolingiz bilan kiring">🧑‍🏫 O'qituvchi</button>
+          <button class="tab" data-tab="zavuch" data-form="teacher-login" data-hint="Zavuch login va parolingiz bilan kiring (maktab admini)">🏫 Zavuch</button>
+          <button class="tab" data-tab="owner" data-form="teacher-login" data-hint="Boshqaruv (egasi) login va parolingiz bilan kiring">👑 Boshqaruv</button>
+          <button class="tab" data-tab="parent">👪 Ota-ona</button>
+        </div>
+
+        <!-- O'quvchi kirishi -->
+        <form id="student-login" class="login-form active" autocomplete="off">
+          <div class="mode-switch">
+            <button type="button" class="mode-btn active" data-mode="test">📝 Test yechish</button>
+            <button type="button" class="mode-btn" data-mode="learn">📚 Bilim olish</button>
+          </div>
+          <!-- Test yechish: ism/familiya/sinf/kod -->
+          <div id="student-test-fields">
+            <div class="field">
+              <input name="first_name" placeholder=" ">
+              <label>Ism</label>
+            </div>
+            <div class="field">
+              <input name="last_name" placeholder=" ">
+              <label>Familiya</label>
+            </div>
+            <div class="field">
+              <select name="class_name">
+                <option value="" disabled selected>Sinfingizni tanlang</option>
+              </select>
+            </div>
+            <div class="field" id="student-code-field">
+              <input name="code" inputmode="numeric" maxlength="6" placeholder=" ">
+              <label>Kirish kodi</label>
+            </div>
+          </div>
+          <!-- Bilim olish: maktab + login/parol (zavuch beradi) -->
+          <div id="student-learn-fields" style="display:none">
+            <div class="field">
+              <select name="learn_school_id">
+                <option value="" disabled selected>Maktabingizni tanlang</option>
+              </select>
+            </div>
+            <div class="field">
+              <input name="learn_username" placeholder=" ">
+              <label>Bilim olish logini</label>
+            </div>
+            <div class="field">
+              <input name="learn_password" type="password" placeholder=" ">
+              <label>Parol</label>
+            </div>
+            <p class="hint">Login va parolni o'qituvchi/zavuchdan oling.</p>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" id="student-submit-btn">Testga kirish →</button>
+          <div class="form-error" data-for="student"></div>
+        </form>
+
+        <!-- Ota-ona kirishi -->
+        <form id="parent-login" class="login-form" autocomplete="off">
+          <div class="field">
+            <input name="username" required placeholder=" ">
+            <label>Ota-ona logini</label>
+          </div>
+          <div class="field">
+            <input name="password" type="password" required placeholder=" ">
+            <label>Parol</label>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Kirish →</button>
+          <div class="form-error" data-for="parent"></div>
+          <p class="hint">Login va parolni farzandingiz o'qituvchisidan oling.</p>
+        </form>
+
+        <!-- O'qituvchi kirishi -->
+        <form id="teacher-login" class="login-form" autocomplete="off">
+          <div class="field">
+            <input name="username" required placeholder=" ">
+            <label>Login</label>
+          </div>
+          <div class="field">
+            <input name="password" type="password" required placeholder=" ">
+            <label>Parol</label>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Panelga kirish →</button>
+          <div class="form-error" data-for="teacher"></div>
+          <p class="hint" id="staff-hint">O'qituvchi login va parolingiz bilan kiring</p>
+        </form>
+      </div>
+      <footer class="login-foot">© 2026 MaktabTest.uz — bilim sari birinchi qadam</footer>
+    </div>
+  </div>
+
+  <!-- ================= O'QUVCHI TEST ================= -->
+  <div id="view-student" class="view">
+    <header class="test-header">
+      <div class="test-meta">
+        <span class="badge" id="st-subject">Fan</span>
+        <span class="test-title" id="st-title">Test</span>
+        <span class="muted" id="st-student"></span>
+      </div>
+      <div class="timer-wrap">
+        <span class="timer-label">Qolgan vaqt</span>
+        <span class="timer" id="timer">--:--</span>
+      </div>
+    </header>
+
+    <div class="test-body">
+      <main class="question-area">
+        <div class="q-counter">Savol <b id="q-current">1</b> / <span id="q-total">10</span></div>
+        <div class="q-card">
+          <div class="q-text" id="q-text"></div>
+          <div class="q-options" id="q-options"></div>
+        </div>
+        <div class="q-controls">
+          <button id="btn-prev" class="btn btn-ghost">← Oldingi</button>
+          <button id="btn-next" class="btn btn-secondary">Keyingi →</button>
+          <button id="btn-finish" class="btn btn-success">Yakunlash ✓</button>
+        </div>
+      </main>
+
+      <aside class="q-navigator">
+        <h3>📋 Savollar jadvali</h3>
+        <div class="nav-grid" id="nav-grid"></div>
+        <div class="legend">
+          <span><i class="dot answered"></i> Belgilangan</span>
+          <span><i class="dot"></i> Bo'sh</span>
+          <span><i class="dot current"></i> Joriy</span>
+        </div>
+        <button id="btn-finish-2" class="btn btn-success btn-block">Testni yakunlash ✓</button>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ================= O'QUVCHI: BILIM OLISH ================= -->
+  <div id="view-learning" class="view">
+    <header class="test-header">
+      <div class="test-meta">
+        <span class="badge">📚 Bilim olish</span>
+        <span class="test-title" id="lr-student"></span>
+      </div>
+      <div class="learn-top-right">
+        <span class="coin-badge" id="lr-time-badge" title="Bilim olishga sarflagan vaqtingiz">⏱ <b id="lr-time">0 s</b></span>
+        <span class="coin-badge">🪙 <b id="lr-coins">0</b> coin</span>
+        <button id="lr-exit" class="btn btn-ghost btn-sm">🚪 Chiqish</button>
+      </div>
+    </header>
+    <div class="learn-body">
+      <div class="learn-tabs">
+        <button class="learn-tab active" data-ltab="subjects">📚 Fanlar</button>
+        <button class="learn-tab" data-ltab="games">🎮 O'yinlar</button>
+        <button class="learn-tab" data-ltab="rank">🏆 Reyting</button>
+        <button class="learn-tab" data-ltab="profile">👤 Profil</button>
+      </div>
+      <div id="learn-subjects" class="learn-pane active">
+        <div id="my-daily-time"></div>
+        <div id="subjects-grid" class="cards-grid"></div>
+        <div id="subject-detail" style="display:none">
+          <button class="btn btn-ghost" id="subj-back" style="margin-bottom:14px">← Fanlarga qaytish</button>
+          <h2 id="subj-title" class="results-title"></h2>
+          <div id="subj-video-sec"><h3 style="margin:16px 0 8px">🎬 Videolar</h3><div id="subj-video" class="cards-grid"></div></div>
+          <div id="subj-audio-sec"><h3 style="margin:18px 0 8px">🎧 Audio darslar</h3><div id="subj-audio" class="cards-grid"></div></div>
+          <div id="subj-text-sec"><h3 style="margin:18px 0 8px">📖 Matnlar</h3><div id="subj-text" class="cards-grid"></div></div>
+        </div>
+      </div>
+      <div id="learn-games" class="learn-pane"><div id="games-grid" class="games-grid"></div></div>
+      <div id="learn-rank" class="learn-pane"><div id="rank-content"></div></div>
+      <div id="learn-profile" class="learn-pane"><div id="profile-content"></div></div>
+      <div id="learn-reader" class="learn-reader" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- ================= OTA-ONA PANELI ================= -->
+  <div id="view-parent" class="view">
+    <header class="test-header">
+      <div class="test-meta">
+        <span class="badge">👪 Ota-ona paneli</span>
+        <span class="test-title" id="pr-student"></span>
+      </div>
+      <div class="learn-top-right">
+        <span class="coin-badge">🪙 <b id="pr-coins">0</b> coin</span>
+        <button id="pr-refresh" class="btn btn-ghost btn-sm">🔄 Yangilash</button>
+        <button id="pr-exit" class="btn btn-ghost btn-sm">🚪 Chiqish</button>
+      </div>
+    </header>
+    <div class="parent-body">
+      <div id="parent-summary"></div>
+      <h2 class="results-title">📊 Test natijalari va xavfsizlik</h2>
+      <div id="parent-tests" class="results-list"></div>
+      <h2 class="results-title" style="margin-top:22px">📚 Bilim olish faoliyati</h2>
+      <div id="parent-learning" class="results-list"></div>
+      <div id="parent-rankings" style="margin-top:22px"></div>
+    </div>
+  </div>
+
+  <!-- ================= O'QITUVCHI PANEL ================= -->
+  <div id="view-teacher" class="view">
+    <button id="burger" class="burger" aria-label="Menyu">☰</button>
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+    <aside class="sidebar">
+      <div class="sidebar-brand">📚 <span>O'qituvchi paneli</span></div>
+      <nav class="side-nav">
+        <button class="side-btn" data-section="schools">🏫 <span>Maktablar (boshqaruv)</span></button>
+        <button class="side-btn active" data-section="stats">🏆 <span>Reyting / Statistika</span></button>
+        <button class="side-btn" data-section="create">➕ <span>Test qo'shish</span></button>
+        <button class="side-btn" data-section="tests">📋 <span>Testlarim</span></button>
+        <button class="side-btn" data-section="lessons">📚 <span>Darslar (bilim olish)</span></button>
+        <button class="side-btn" data-section="results">📊 <span>Natijalar va xavfsizlik</span></button>
+        <button class="side-btn" data-section="live">🟢 <span>Jonli kuzatuv</span><span class="side-badge" id="badge-live"></span></button>
+        <button class="side-btn" data-section="learning">🎓 <span>Mutolaa natijalari</span></button>
+        <button class="side-btn" data-section="students">👥 <span>O'quvchilar ro'yxati</span></button>
+        <button class="side-btn" data-section="parents">👪 <span>Ota-onalar (login)</span></button>
+        <button class="side-btn" data-section="teachers">🧑‍🏫 <span>O'qituvchilar</span></button>
+        <button class="side-btn" data-section="profile">👤 <span>Profil</span></button>
+        <button class="side-btn" data-section="settings">⚙️ <span>Sozlamalar</span></button>
+      </nav>
+      <button id="teacher-logout" class="side-btn logout">🚪 <span>Chiqish</span></button>
+    </aside>
+
+    <main class="panel-main">
+      <!-- Maktab konteksti banneri (owner maktabga kirganda) -->
+      <div id="school-banner" class="school-banner" style="display:none">
+        🏫 Ko'rilmoqda: <b id="school-banner-name"></b>
+        <button id="school-exit" class="btn btn-ghost btn-sm" style="margin-left:auto">← Maktablar ro'yxatiga</button>
+      </div>
+
+      <!-- === Maktablar (owner boshqaruvi) === -->
+      <section id="sec-schools" class="panel-section">
+        <div class="section-head">
+          <h2>🏫 Maktablar boshqaruvi</h2>
+        </div>
+        <div class="card">
+          <div class="live-head" style="margin-bottom:14px">
+            <span class="live-dot"></span> Jami <b id="schools-count">0</b> ta maktab
+          </div>
+          <h3 style="margin-bottom:10px">➕ Yangi maktab qo'shish</h3>
+          <div class="grid-4">
+            <div class="field-row"><label>Maktab nomi</label><input id="sch-name" class="inp" placeholder="Masalan: 5-maktab"></div>
+            <div class="field-row"><label>Zavuch login</label><input id="sch-user" class="inp" placeholder="Masalan: zavuch5"></div>
+            <div class="field-row"><label>Zavuch parol</label><input id="sch-pass" class="inp" type="text" placeholder="Kamida 4 ta belgi"></div>
+          </div>
+          <button id="sch-add" class="btn btn-success">➕ Maktab yaratish</button>
+        </div>
+        <div id="schools-list" class="cards-grid"></div>
+      </section>
+
+      <!-- === Reyting / Statistika === -->
+      <section id="sec-stats" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>🏆 Reyting va statistika</h2>
+          <button id="stats-refresh" class="btn btn-ghost btn-sm">🔄 Yangilash</button>
+        </div>
+        <div id="stats-content"></div>
+      </section>
+
+      <!-- === Test qo'shish === -->
+      <section id="sec-create" class="panel-section active">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>➕ Yangi test qo'shish</h2>
+        </div>
+
+        <!-- Fayldan import -->
+        <div class="card" id="import-card">
+          <h3 style="margin-bottom:8px">📄 Fayldan test yuklash (Excel / CSV / Word / PDF)</h3>
+          <p class="muted" style="margin-bottom:8px">Tayyor fayldan savollarni yuklang. <a href="#" id="imp-template" style="color:var(--primary-2);font-weight:700">📥 Namuna faylni yuklab oling</a> — quyidagi formatda to'ldiring:</p>
+          <div style="overflow-x:auto;margin-bottom:12px">
+            <table class="imp-preview-table">
+              <thead><tr><th>Savol</th><th>A</th><th>B</th><th>C</th><th>D</th><th style="color:#23c483">To'g'ri javob</th></tr></thead>
+              <tbody>
+                <tr><td>2 + 2 = ?</td><td>3</td><td>4</td><td>5</td><td>6</td><td style="color:#23c483;font-weight:700">B</td></tr>
+                <tr><td>O'zbekiston poytaxti?</td><td>Samarqand</td><td>Toshkent</td><td>Buxoro</td><td>Xiva</td><td style="color:#23c483;font-weight:700">B</td></tr>
+                <tr><td>Suv formulasi?</td><td>CO2</td><td>O2</td><td>H2O</td><td>NaCl</td><td style="color:#23c483;font-weight:700">C</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="grid-4">
+            <div class="field-row"><label>Test nomi</label><input id="imp-title" class="inp" placeholder="Masalan: Import test"></div>
+            <div class="field-row"><label>Fan</label><select id="imp-subject" class="inp"></select></div>
+            <div class="field-row"><label>Sinf</label><select id="imp-class" class="inp"></select></div>
+            <div class="field-row"><label>Vaqt (daqiqa)</label><input id="imp-duration" class="inp" type="number" min="1" value="20"></div>
+          </div>
+          <div class="field-row"><label>Fayl (.xlsx .csv .docx .pdf)</label><input id="imp-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf"></div>
+          <button id="imp-btn" class="btn btn-secondary">📥 Fayldan yuklash</button>
+          <div id="imp-progress" class="muted" style="margin-top:8px"></div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom:8px">✍️ Yoki qo'lda test tuzish</h3>
+          <div class="field-row">
+            <label>Test nomi</label>
+            <input id="ct-title" class="inp" placeholder="Masalan: 1-chorak nazorat ishi">
+          </div>
+          <div class="grid-4">
+            <div class="field-row">
+              <label>Fan</label>
+              <select id="ct-subject" class="inp"></select>
+            </div>
+            <div class="field-row">
+              <label>Sinf</label>
+              <select id="ct-class" class="inp"></select>
+            </div>
+            <div class="field-row">
+              <label>Vaqt (daqiqa)</label>
+              <input id="ct-duration" class="inp" type="number" min="1" value="20">
+            </div>
+            <div class="field-row">
+              <label>Savollar soni</label>
+              <input id="ct-count" class="inp" type="number" min="1" max="100" placeholder="Masalan: 10">
+            </div>
+          </div>
+          <button id="ct-open-slots" class="btn btn-secondary">📝 Savol joylarini ochish</button>
+        </div>
+
+        <div id="ct-questions" class="questions-list"></div>
+
+        <div class="save-bar" id="ct-save-bar" style="display:none">
+          <span id="ct-save-info" class="muted"></span>
+          <button id="ct-save" class="btn btn-success btn-lg">💾 Testni saqlash</button>
+        </div>
+      </section>
+
+      <!-- === Testlarim === -->
+      <section id="sec-tests" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>📋 Mening testlarim</h2>
+          <button id="tests-import-btn" class="btn btn-secondary btn-sm">📄 Fayldan test qo'shish</button>
+        </div>
+        <p class="muted" style="margin-bottom:14px">Eski testlaringiz saqlanadi. Yangi test (Excel/Word/PDF yoki qo'lda) qo'shsangiz ro'yxatga qo'shiladi. Har testда ⏹️ To'xtatish va 🗑️ O'chirish bor.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <input id="tests-search" class="inp search-inp" style="flex:1;min-width:180px;margin-bottom:0" placeholder="🔎 Test qidirish (nomi, fan yoki kod)...">
+          <select id="tests-class-filter" class="inp" style="max-width:200px"><option value="">🏫 Barcha sinflar</option></select>
+        </div>
+        <div id="tests-list" class="cards-grid"></div>
+      </section>
+
+      <!-- === Darslar (bilim olish) === -->
+      <section id="sec-lessons" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>📚 Darslar — video, audio, matn</h2>
+        </div>
+        <div class="card">
+          <div class="field-row">
+            <label>Dars nomi</label>
+            <input id="ls-title" class="inp" placeholder="Masalan: Fotosintez haqida video dars">
+          </div>
+          <div class="grid-4">
+            <div class="field-row">
+              <label>Fan</label>
+              <select id="ls-subject" class="inp"></select>
+            </div>
+            <div class="field-row">
+              <label>Sinf</label>
+              <select id="ls-class" class="inp"></select>
+            </div>
+            <div class="field-row">
+              <label>Dars turi</label>
+              <select id="ls-type" class="inp">
+                <option value="video">🎬 Video</option>
+                <option value="audio">🎧 Audio</option>
+                <option value="text">📖 Matn (kitob)</option>
+              </select>
+            </div>
+            <div class="field-row">
+              <label>Coin mukofoti</label>
+              <input id="ls-coins" class="inp" type="number" min="0" placeholder="Masalan: 20">
+            </div>
+          </div>
+          <div class="field-row" id="ls-file-row">
+            <label>Video/audio fayl</label>
+            <input id="ls-file" class="inp" type="file" accept="video/*,audio/*">
+          </div>
+          <div class="field-row" id="ls-text-row" style="display:none">
+            <label>Matn (o'qish uchun)</label>
+            <textarea id="ls-text" class="inp" rows="7" placeholder="Dars matnini yoki kitob bo'limini shu yerga yozing..."></textarea>
+          </div>
+          <div class="field-row" id="ls-image-row" style="display:none">
+            <label>Rasm (ixtiyoriy — matnga qo'shiladi)</label>
+            <input id="ls-image" class="inp" type="file" accept="image/*">
+          </div>
+          <div class="field-row">
+            <label class="chk-label"><input type="checkbox" id="ls-has-test"> 📝 Darsdan keyingi test qo'shaman</label>
+          </div>
+          <div id="ls-test-builder" style="display:none">
+            <div class="grid-4">
+              <div class="field-row"><label>Test vaqti (daqiqa)</label><input id="ls-test-dur" class="inp" type="number" min="1" value="10"></div>
+              <div class="field-row"><label>Savollar soni (qo'lda)</label><input id="ls-test-count" class="inp" type="number" min="1" max="50" placeholder="Masalan: 5"></div>
+            </div>
+            <button id="ls-open-slots" class="btn btn-secondary btn-sm" type="button">📝 Savol joylarini ochish</button>
+            <div id="ls-questions" class="questions-list" style="margin-top:14px"></div>
+            <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--card-border)">
+              <p class="muted" style="margin-bottom:6px">📄 Yoki test savollarini fayldan yuklang (Excel/CSV/Word/PDF). <a href="#" id="ls-test-template" style="color:var(--primary-2);font-weight:700">📥 Namuna faylni yuklab oling</a></p>
+              <div class="field-row"><label>Fayl (.xlsx .csv .docx .pdf)</label><input id="ls-test-file" class="inp" type="file" accept=".xlsx,.xlsm,.csv,.docx,.pdf"></div>
+            </div>
+          </div>
+          <button id="ls-save" class="btn btn-success">💾 Darsni saqlash</button>
+          <div id="ls-progress" class="muted" style="margin-top:8px"></div>
+        </div>
+        <input id="lessons-search" class="inp search-inp" placeholder="🔎 Dars qidirish (nomi, fan yoki sinf)...">
+        <div id="lessons-admin-list" class="cards-grid"></div>
+      </section>
+
+      <!-- === Natijalar va xavfsizlik === -->
+      <section id="sec-results" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>📊 Natijalar va xavfsizlik</h2>
+        </div>
+        <div class="card">
+          <div class="grid-4">
+            <div class="field-row">
+              <label>Sinfni tanlang</label>
+              <select id="res-class" class="inp">
+                <option value="" disabled selected>— Sinf —</option>
+              </select>
+            </div>
+            <div class="field-row">
+              <label>Fan bo'yicha filtr</label>
+              <select id="res-subject" class="inp">
+                <option value="">Barcha fanlar</option>
+              </select>
+            </div>
+          </div>
+          <label style="font-weight:700;font-size:.9rem;color:var(--muted);margin-bottom:8px;display:block">yoki sinf tugmasini bosing:</label>
+          <div id="res-class-buttons" class="class-btn-grid"></div>
+        </div>
+        <div id="results-title" class="results-title" style="display:none"></div>
+        <div id="results-export" style="display:none;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <button id="res-refresh" class="btn btn-primary btn-sm">🔄 Yangilash</button>
+          <button id="exp-excel" class="btn btn-secondary btn-sm">📊 Excel (CSV) yuklab olish</button>
+          <button id="exp-pdf" class="btn btn-ghost btn-sm">🖨️ PDF / chop etish</button>
+        </div>
+        <div id="results-list" class="results-list"></div>
+      </section>
+
+      <!-- === Jonli kuzatuv === -->
+      <section id="sec-live" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>🟢 Jonli kuzatuv — hozir test yechayotganlar</h2>
+        </div>
+        <div class="card">
+          <div class="live-head">
+            <span class="live-dot"></span>
+            <b id="live-count">0</b> ta o'quvchi hozir test yechyapti
+            <span class="muted" style="margin-left:auto" id="live-updated"></span>
+          </div>
+          <div class="field-row" style="margin-top:14px;margin-bottom:0">
+            <label>Sinf bo'yicha filtr</label>
+            <select id="live-class" class="inp">
+              <option value="">Barcha sinflar</option>
+            </select>
+          </div>
+        </div>
+        <div id="live-list" class="results-list"></div>
+      </section>
+
+      <!-- === Mutolaa natijalari (bilim olish) === -->
+      <section id="sec-learning" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>🎓 Mutolaa natijalari — coin va faollik</h2>
+        </div>
+        <div class="card">
+          <div class="grid-4">
+            <div class="field-row">
+              <label>Sinfni tanlang</label>
+              <select id="lrn-class" class="inp">
+                <option value="" disabled selected>— Sinf —</option>
+              </select>
+            </div>
+            <div class="field-row">
+              <label>Fan bo'yicha filtr</label>
+              <select id="lrn-subject" class="inp">
+                <option value="">Barcha fanlar</option>
+              </select>
+            </div>
+          </div>
+          <div id="lrn-class-buttons" class="class-btn-grid"></div>
+        </div>
+        <!-- Yangi o'quvchi(lar) qo'shish (faqat zavuch/boshqaruv) -->
+        <div id="lrn-add-box" class="card" style="display:none">
+          <h3 style="margin-bottom:8px">➕ <span id="lrn-add-class"></span> sinfga yangi o'quvchi qo'shish</h3>
+          <div class="add-student-box">
+            <input id="lrn-first" class="inp" placeholder="Ism">
+            <input id="lrn-last" class="inp" placeholder="Familiya">
+            <button id="lrn-add" class="btn btn-secondary">➕ Qo'shish</button>
+          </div>
+          <details style="margin-top:10px">
+            <summary style="cursor:pointer;font-weight:700">📋 Ro'yxatdan ko'p o'quvchi qo'shish</summary>
+            <p class="muted" style="margin:8px 0">Har qatorда bitta o'quvchi: <b>Familiya Ism</b></p>
+            <textarea id="lrn-bulk" class="inp" rows="5" placeholder="Aliyev Bekzod&#10;Yusupova Aziza&#10;Sobirov Diyor"></textarea>
+            <button id="lrn-bulk-add" class="btn btn-secondary" style="margin-top:8px">📥 Ro'yxatni qo'shish</button>
+          </details>
+          <div id="lrn-add-prog" class="muted" style="margin-top:6px"></div>
+        </div>
+        <div id="learning-title" class="results-title" style="display:none"></div>
+        <div id="lrn-refresh-box" style="display:none;margin-bottom:14px;gap:10px;flex-wrap:wrap">
+          <button id="lrn-refresh" class="btn btn-primary btn-sm">🔄 Yangilash</button>
+          <button id="lrn-exp-excel" class="btn btn-secondary btn-sm">📊 Excel (CSV) yuklab olish</button>
+          <button id="lrn-exp-pdf" class="btn btn-ghost btn-sm">🖨️ PDF / chop etish</button>
+        </div>
+        <div id="learning-list" class="results-list"></div>
+      </section>
+
+      <!-- === O'quvchilar ro'yxati === -->
+      <section id="sec-students" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>👥 O'quvchilar ro'yxati</h2>
+        </div>
+        <div class="card">
+          <div class="grid-4">
+            <div class="field-row">
+              <label>Sinfni tanlang</label>
+              <select id="stu-class" class="inp">
+                <option value="" disabled selected>— Sinf —</option>
+              </select>
+            </div>
+          </div>
+          <div id="stu-add-box" class="add-student-box" style="display:none">
+            <input id="stu-first" class="inp" placeholder="Ism">
+            <input id="stu-last" class="inp" placeholder="Familiya">
+            <button id="stu-add" class="btn btn-secondary">➕ Qo'shish</button>
+          </div>
+        </div>
+        <input id="students-search" class="inp search-inp" placeholder="🔎 O'quvchi qidirish (ism yoki familiya)...">
+        <div id="students-list" class="students-list"></div>
+      </section>
+
+      <!-- === Ota-onalar (login/parol) === -->
+      <section id="sec-parents" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>👪 Ota-onalar login/parollari</h2>
+        </div>
+        <div class="card">
+          <div class="field-row">
+            <label>Sinfni tanlang</label>
+            <select id="par-class" class="inp"><option value="" disabled selected>— Sinf —</option></select>
+          </div>
+          <div id="par-class-buttons" class="class-btn-grid"></div>
+          <p class="muted">Har bir o'quvchi uchun login yaratib, ota-onasiga bering. Ota-ona alohida "👪 Ota-ona" bo'limidan kiradi.</p>
+        </div>
+        <div id="parents-list" class="results-list"></div>
+      </section>
+
+      <!-- === O'qituvchilar === -->
+      <section id="sec-teachers" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>🧑‍🏫 O'qituvchilar (panel egalari)</h2>
+        </div>
+        <div class="card card-narrow">
+          <p class="muted">Yangi o'qituvchi qo'shsangiz, u ham shu login/parol bilan panelга kira oladi.</p>
+          <div class="field-row"><label>Yangi login</label><input id="tch-user" class="inp" placeholder="Masalan: oqituvchi2"></div>
+          <div class="field-row"><label>Parol</label><input id="tch-pass" class="inp" type="text" placeholder="Kamida 4 ta belgi"></div>
+          <div class="field-row"><label>Rol (kim uchun panel?)</label>
+            <select id="tch-role" class="inp">
+              <option value="teacher">O'qituvchi</option>
+              <option value="zavuch">Zavuch</option>
+            </select>
+          </div>
+          <button id="tch-add" class="btn btn-success">➕ Panel qo'shish</button>
+        </div>
+        <div id="teachers-list" class="results-list"></div>
+      </section>
+
+      <!-- === Profil (panel egasi) === -->
+      <section id="sec-profile" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>👤 Mening profilim</h2>
+        </div>
+        <div id="profile-panel-content"></div>
+      </section>
+
+      <!-- === Sozlamalar === -->
+      <section id="sec-settings" class="panel-section">
+        <div class="section-head">
+          <button class="back-btn" data-back>← Orqaga</button>
+          <h2>⚙️ Sozlamalar — login/parolni yangilash</h2>
+        </div>
+        <div class="card card-narrow">
+          <p class="muted">Agar login yoki parolingizni birov bilib qolsa, bu yerdan yangilang.</p>
+          <div class="field-row">
+            <label>Joriy parol</label>
+            <input id="set-current" class="inp" type="password" placeholder="Joriy parolingiz">
+          </div>
+          <div class="field-row">
+            <label>Yangi login</label>
+            <input id="set-user" class="inp" placeholder="Yangi login">
+          </div>
+          <div class="field-row">
+            <label>Yangi parol</label>
+            <input id="set-pass" class="inp" type="password" placeholder="Yangi parol (kamida 4 ta belgi)">
+          </div>
+          <button id="set-save" class="btn btn-success">💾 Saqlash</button>
+        </div>
+
+        <div class="card card-narrow" id="work-hours-box" style="display:none">
+          <h3 style="margin-bottom:6px">🕐 Tizim ish vaqti</h3>
+          <p class="muted">O'quvchilar faqat shu soatlar orasida test yecha/bilim ola oladi.</p>
+          <button id="work-hours-btn" class="btn btn-secondary">🕐 Ish vaqtini sozlash</button>
+        </div>
+
+        <div class="card card-narrow" id="game-coins-box" style="display:none">
+          <h3 style="margin-bottom:6px">🎮 O'yinlar uchun coin</h3>
+          <p class="muted">O'quvchi miyani charxlaydigan o'yinni yakunlasa nechta coin olishini belgilang (har o'yin uchun kuniga bir marta beriladi).</p>
+          <button id="game-coins-btn" class="btn btn-secondary">🪙 O'yin coinini sozlash</button>
+        </div>
+
+        <div class="card card-narrow" id="clear-data-box" style="display:none;border:1px solid var(--danger-1)">
+          <h3 style="margin-bottom:6px;color:var(--danger-1)">🧹 Maktab ma'lumotlarini tozalash</h3>
+          <p class="muted">Faqat <b>testlar</b>, <b>savollar</b> va <b>natijalar</b> o'chiriladi. O'quvchilar, o'qituvchilar, ota-ona loginlari, darslar va coinlar saqlanadi.</p>
+          <button id="clear-data-btn" class="btn btn-danger">🧹 Testlar va natijalarni tozalash</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= MODAL ================= -->
+  <div id="modal-overlay" class="modal-overlay">
+    <div class="modal" id="modal-box" role="dialog" aria-modal="true">
+      <button class="modal-close" id="modal-close" aria-label="Yopish">✕</button>
+      <div class="modal-content" id="modal-content"></div>
+    </div>
+  </div>
+
+  <!-- ================= TOAST ================= -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- Skriptlar (tartib muhim) -->
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/ui.js"></script>
+  <script src="/static/js/student.js"></script>
+  <script src="/static/js/games.js"></script>
+  <script src="/static/js/learning.js"></script>
+  <script src="/static/js/parent.js"></script>
+  <script src="/static/js/teacher.js"></script>
+  <script src="/static/js/main.js"></script>
+</body>
+</html>
