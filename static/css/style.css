@@ -956,6 +956,7 @@ body.modal-open { overflow: hidden; }   /* modal ochiq bo'lsa orqa fon scroll qi
     border-right: 1px solid var(--card-border); min-height: 100vh; overflow-y: auto;
   }
   .sidebar.open { transform: translateX(0); }
+  .side-nav { overflow-y: auto; min-height: 0; }
   .side-btn span { display: inline; }
   .side-btn { transform: none !important; }
   .panel-main { padding-top: 68px; }
