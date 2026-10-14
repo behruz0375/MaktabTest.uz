@@ -32,8 +32,8 @@ SUBJECTS = [
 # Sinflar: 1-A, 1-B, 2-A ... 11-A, 11-B
 CLASSES = [f"{grade}-{letter}" for grade in range(1, 12) for letter in ("A", "B")]
 
-DEFAULT_ADMIN_USER = "admin"
-DEFAULT_ADMIN_PASS = "admin123"
+DEFAULT_ADMIN_USER = "boshqaruv"
+DEFAULT_ADMIN_PASS = "boshqaruv123"
 
 
 def now_iso():
